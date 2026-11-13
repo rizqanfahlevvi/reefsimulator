@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { colormapGLSL, colormap, COLORMAPS } from './colormaps.js';
 import { DEAD_LO, DEAD_HI, DEAD_MAX } from './flowfog.js';
 import { FILTER, filterOpaque } from '../layout.js';
+import { QUANTITIES, displayValue, percentiles, RangeTracker, legendTicks } from './quantity.js';
 
 const QUAD_VS = /* glsl */ `
 varying vec2 vUv;
@@ -61,7 +62,9 @@ class FlowPlane {
     this.ema = new Float32Array(N); // rata-rata waktu di sisi klien (bila sampler tidak menyediakan)
     this.emaInit = false;
     this.scalars = new Float32Array(N);
-    this.p95 = 2;
+    this.stats = null; // {p02, p95, p98} besaran yang ditampilkan
+    this.speedP95 = 3; // untuk redup/terang partikel
+    this.speeds = new Float32Array(N);
 
     /* partikel: tekstur posisi awal acak + dua render target ping-pong */
     const init = new Uint8Array(this.n * 4);
@@ -147,10 +150,13 @@ void main() { gl_FragColor = floor(255.0 * texture2D(uPrev, vUv) * uFade) / 255.
         uRef: { value: 10 },
         uCmap: { value: 0 },
         uSize: { value: 2.4 },
+        uMin: { value: 0 },
+        uMax: { value: 10 },
       },
       vertexShader: /* glsl */ `
 attribute float aIdx;
 uniform sampler2D uParticles; uniform sampler2D uVel; uniform float uRes; uniform float uRef; uniform int uCmap; uniform float uSize;
+uniform float uMin; uniform float uMax;
 varying vec4 vCol;
 ${DECODE_GLSL}
 ${CMAP}
@@ -158,9 +164,9 @@ void main() {
   vec2 puv = vec2(mod(aIdx, uRes) + 0.5, floor(aIdx / uRes) + 0.5) / uRes;
   vec2 pos = decodePos(texture2D(uParticles, puv));
   vec4 v = texture2D(uVel, pos);
-  float t = length(v.rg) / uRef;
-  // partikel di zona mati (hampir diam) dibuat redup supaya tidak jadi bintik statis
-  float a = smoothstep(0.02, 0.2, t);
+  // warna = besaran yang ditampilkan; partikel di zona mati (hampir diam) dibuat redup
+  float t = (v.b - uMin) / max(uMax - uMin, 1e-4);
+  float a = smoothstep(0.02, 0.2, length(v.rg) / uRef);
   vCol = vec4(mix(cmap(t, uCmap), vec3(1.0), 0.22) * a, a);
   gl_PointSize = uSize;
   gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
@@ -190,6 +196,7 @@ void main() {
       uniforms: {
         uVel: { value: this.velTex },
         uTrail: { value: this.tA.texture },
+        uMin: { value: 0 },
         uMax: { value: 10 },
         uCmap: { value: 0 },
         uMapAlpha: { value: 0.85 },
@@ -197,7 +204,7 @@ void main() {
       },
       vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
       fragmentShader: /* glsl */ `
-uniform sampler2D uVel; uniform sampler2D uTrail; uniform float uMax; uniform int uCmap; uniform float uMapAlpha; uniform float uBright;
+uniform sampler2D uVel; uniform sampler2D uTrail; uniform float uMin; uniform float uMax; uniform int uCmap; uniform float uMapAlpha; uniform float uBright;
 varying vec2 vUv;
 ${CMAP}
 void main() {
@@ -206,7 +213,7 @@ void main() {
   if (v.a < 0.75) { gl_FragColor = vec4(0.17, 0.17, 0.19, 0.5); return; }   // batu, pasir
   vec4 tr = texture2D(uTrail, vUv);                        // jejak (premultiplied)
   float ta = clamp(tr.a * 1.6, 0.0, 1.0);                  // pertegas garis arus
-  vec3 base = cmap(v.b / uMax, uCmap) * uBright;
+  vec3 base = cmap((v.b - uMin) / max(uMax - uMin, 1e-4), uCmap) * uBright;
   gl_FragColor = vec4(base * (1.0 - ta) + min(tr.rgb * 1.6, vec3(1.0)), max(uMapAlpha, ta));
 }`,
       transparent: true,
@@ -231,10 +238,10 @@ void main() {
     return false;
   }
 
-  /** Isi tekstur kecepatan dari medan CFD. `useAvg`: peta warna memakai rata-rata waktu. */
-  refresh(useAvg, dtSim) {
-    const { texW, texH, U, V, origin, velData, ema, scalars } = this;
-    const out = [0, 0, 0, 0, 0];
+  /** Isi tekstur kecepatan dari medan CFD; kanal b = besaran q (satuan legenda). */
+  refresh(q, dtSim) {
+    const { texW, texH, U, V, origin, velData, ema, scalars, speeds } = this;
+    const out = [0, 0, 0, 0, 0, 0, 0, 35];
     const toHalf = THREE.DataUtils.toHalfFloat;
     const k = this.emaInit ? 1 - Math.exp(-Math.max(0, dtSim) / 8) : 1;
     let nf = 0;
@@ -247,26 +254,25 @@ void main() {
         const z = origin.z + u * U[2] + v * V[2];
         this.sample(x, y, z, out);
         const c = j * texW + i;
-        let s = out[2];
+        let s = 0;
         if (out[4] === FLUID) {
-          ema[c] += (s - ema[c]) * k;
-          if (useAvg) s = Number.isNaN(out[3]) ? ema[c] : out[3];
+          ema[c] += (out[2] - ema[c]) * k;
+          s = displayValue(q, out, ema[c]);
+          speeds[nf] = out[2];
           scalars[nf++] = s;
         }
-        const q = c * 4;
-        velData[q] = toHalf(out[0]);
-        velData[q + 1] = toHalf(out[1]);
-        velData[q + 2] = toHalf(s);
-        velData[q + 3] = toHalf(out[4]);
+        const qd = c * 4;
+        velData[qd] = toHalf(out[0]);
+        velData[qd + 1] = toHalf(out[1]);
+        velData[qd + 2] = toHalf(s);
+        velData[qd + 3] = toHalf(out[4]);
       }
     }
     this.emaInit = true;
     this.velTex.needsUpdate = true;
-    // persentil 95 untuk skala warna otomatis
-    if (nf > 10) {
-      const arr = scalars.subarray(0, nf).slice().sort();
-      this.p95 = arr[Math.floor(nf * 0.95)];
-    }
+    this.stats = percentiles(scalars, nf);
+    const sp = percentiles(speeds, nf);
+    if (sp) this.speedP95 = Math.max(1, sp.p95 * 1.15);
   }
 
   /** Jalankan pass GPU: majukan partikel, pudarkan jejak, gambar partikel. */
@@ -306,6 +312,8 @@ void main() {
     d.uParticles.value = this.pRead;
     d.uRef.value = opts.ref;
     d.uCmap.value = opts.cmap;
+    d.uMin.value = opts.min;
+    d.uMax.value = opts.max;
     this.pointsGeo.setDrawRange(0, this.active);
     renderer.autoClear = false;
     renderer.setRenderTarget(tWrite);
@@ -326,34 +334,31 @@ function createLegend(container) {
   const cv = box.querySelector('canvas');
   const ticks = box.querySelector('.ticks');
   let key = '';
-  return (visible, cmapName, max, avg, deadOnly = false) => {
+  /** @param {string} q besaran; deadOnly: legenda khusus kabut zona mati */
+  return (visible, cmapName, min, max, q, deadOnly = false) => {
     box.hidden = !visible;
     if (!visible) return;
-    const m = deadOnly ? DEAD_MAX : Math.max(1, Math.round(max * 2) / 2);
-    const k = `${cmapName}|${m}|${avg}|${deadOnly}`;
+    const qq = QUANTITIES[q] || QUANTITIES.inst;
+    const tk = deadOnly ? [0, 0.5, 1].map((v) => ({ v, text: String(v).replace('.', ',') })) : legendTicks(q, min, max);
+    const lo = deadOnly ? 0 : min;
+    const hi = deadOnly ? DEAD_MAX : max;
+    const k = `${cmapName}|${q}|${deadOnly}|${tk.map((t) => t.text).join()}`;
     if (k === key) return;
     key = k;
-    title.textContent = deadOnly
-      ? `Kabut zona mati: laju ${avg ? 'rata-rata 8 dtk ' : ''}< 1 cm/s`
-      : avg
-        ? 'Laju arus rata-rata 8 dtk (cm/s)'
-        : 'Laju arus (cm/s)';
+    title.textContent = deadOnly ? 'Kabut zona mati: laju rata-rata < 1 cm/s' : `${qq.label} (${qq.unit})`;
     const x = cv.getContext('2d');
     if (x) {
       const c = [0, 0, 0];
       for (let i = 0; i < cv.width; i++) {
         const t = i / (cv.width - 1);
-        if (deadOnly) for (let q = 0; q < 3; q++) c[q] = DEAD_LO[q] + (DEAD_HI[q] - DEAD_LO[q]) * t;
+        if (deadOnly) for (let j = 0; j < 3; j++) c[j] = DEAD_LO[j] + (DEAD_HI[j] - DEAD_LO[j]) * t;
         else colormap(cmapName, t, c);
         x.fillStyle = `rgb(${(c[0] * 255) | 0},${(c[1] * 255) | 0},${(c[2] * 255) | 0})`;
         x.fillRect(i, 0, 1, cv.height);
       }
     }
-    // tanda nilai: 0, batas kategori reef (1 mati, 3 lemah, 8 kuat) yang muat, dan maksimum
-    const vals = deadOnly ? [0, 0.5, 1] : [0, 1, 3, 8].filter((v) => v < m * 0.92);
-    if (!deadOnly) vals.push(m);
-    ticks.innerHTML = vals
-      .map((v) => `<span style="left:${(v / m) * 100}%">${String(v).replace('.', ',')}${v === m && !deadOnly ? '+' : ''}</span>`)
+    ticks.innerHTML = tk
+      .map((t) => `<span style="left:${(((t.v - lo) / Math.max(1e-9, hi - lo)) * 100).toFixed(1)}%">${t.text}</span>`)
       .join('');
   };
 }
@@ -388,6 +393,9 @@ export function createFlowViz(renderer, scene, app, flow, container) {
       o[2] = Math.hypot(v3[0], v3[1], v3[2]);
       o[3] = flow.sampleAvg3(x, y, z);
       o[4] = FLUID;
+      o[5] = flow.scalarT('age', x, y, z);
+      o[6] = flow.scalarT('dye', x, y, z);
+      o[7] = flow.scalarT('salt', x, y, z);
     },
   });
   // tank: bidang tegak memanjang pada kedalaman z
@@ -411,6 +419,9 @@ export function createFlowViz(renderer, scene, app, flow, container) {
       o[2] = Math.hypot(v3[0], v3[1], v3[2]);
       o[3] = flow.sampleAvg3(x, y, z);
       o[4] = FLUID;
+      o[5] = flow.scalarT('age', x, y, z);
+      o[6] = flow.scalarT('dye', x, y, z);
+      o[7] = flow.scalarT('salt', x, y, z);
     },
   });
   // filter: penampang memanjang pada kedalaman z (medan 3D)
@@ -432,6 +443,9 @@ export function createFlowViz(renderer, scene, app, flow, container) {
       o[2] = Math.hypot(v3[0], v3[1], v3[2]);
       o[3] = flow.sampleAvgF(x, y, z);
       o[4] = FLUID;
+      o[5] = flow.scalarF('age', x, y, z);
+      o[6] = flow.scalarF('dye', x, y, z);
+      o[7] = flow.scalarF('salt', x, y, z);
     },
   });
   const planes = [tankH, tankV, filter];
@@ -446,15 +460,14 @@ export function createFlowViz(renderer, scene, app, flow, container) {
   let lastRefresh = 0;
   let simSinceRefresh = 0;
   let lastKey = '';
-  let maxS = 6;
   let lastReal = 0;
   let lastSim = 0;
-  let currentMax = 6;
+  const range = new RangeTracker();
 
   /**
-   * @param {{on: boolean, p95: number}} [fog] kabut kecepatan 3D (ikut skala warna & legenda yang sama)
+   * @param {{on: boolean, stats: object, mode: string}} [fog] kabut 3D (ikut skala warna & legenda yang sama)
    */
-  function update(real, simdt, fog = { on: false, p95: 0, mode: 'fast' }) {
+  function update(real, simdt, fog = { on: false, stats: null, mode: 'fast' }) {
     const { V, FV, S } = app;
     lastReal = real;
     lastSim = simdt;
@@ -468,34 +481,31 @@ export function createFlowViz(renderer, scene, app, flow, container) {
       tankV.setOrigin(0.5, 0, Math.max(0.8, Math.min(24.2, FV.sliceZ))) |
       filter.setOrigin(0.5, 0, FILTER.z0 + Math.max(0.3, Math.min(9.7, FV.filterZ)));
     const visible = planes.filter((p) => p.mesh.visible);
-    const useAvg = FV.value === 'avg';
-    const key = `${FV.value}|${visible.map((p) => p.name).join()}|${[S.HT, S.H1, S.H2, S.H3, S.HP].map((x) => Math.round(x * 4)).join()}`;
+    const q = FV.value;
+    const key = `${q}|${visible.map((p) => p.name).join()}|${[S.HT, S.H1, S.H2, S.H3, S.HP].map((x) => Math.round(x * 4)).join()}`;
     const now = performance.now();
-    if (visible.length && (moved || key !== lastKey || (flow.version !== lastVersion && now - lastRefresh > 90))) {
-      for (const p of visible) p.refresh(useAvg, simSinceRefresh);
+    const changed = key !== lastKey;
+    if (visible.length && (moved || changed || (flow.version !== lastVersion && now - lastRefresh > 90))) {
+      for (const p of visible) p.refresh(q, simSinceRefresh);
       lastVersion = flow.version;
       lastRefresh = now;
       lastKey = key;
       simSinceRefresh = 0;
     }
-    // skala warna otomatis: persentil 95 dari semua tampilan aktif, dihaluskan terhadap waktu
-    const srcs = visible.map((p) => p.p95);
-    if (fog.on) srcs.push(fog.p95);
-    if (srcs.length) {
-      const target = Math.max(2, Math.max(...srcs) * 1.15);
-      maxS += (target - maxS) * (moved ? 1 : Math.min(1, real * 2.5));
-    }
-    const vmax = FV.vmax > 0 ? FV.vmax : maxS;
+    // rentang skala warna: otomatis dari persentil semua tampilan aktif (dihaluskan) atau manual
+    const stats = visible.map((p) => p.stats);
+    if (fog.on) stats.push(fog.stats);
+    range.update(q, stats, FV.vmax, real, !!moved);
     const ci = Math.max(0, COLORMAPS.indexOf(FV.cmap));
     for (const p of visible) {
       const u = p.displayMat.uniforms;
-      u.uMax.value = vmax;
+      u.uMin.value = range.min;
+      u.uMax.value = range.max;
       u.uCmap.value = ci;
       u.uMapAlpha.value = FV.mapAlpha;
     }
     // legenda khusus bila yang tampil hanya kabut zona mati
-    legend(visible.length > 0 || fog.on, FV.cmap, vmax, useAvg, fog.on && fog.mode === 'dead' && visible.length === 0);
-    currentMax = vmax;
+    legend(visible.length > 0 || fog.on, FV.cmap, range.min, range.max, q, fog.on && fog.mode === 'dead' && visible.length === 0);
   }
 
   /** Dipanggil SETELAH render utama: pass GPU untuk frame berikutnya. */
@@ -504,10 +514,19 @@ export function createFlowViz(renderer, scene, app, flow, container) {
     const vis = planes.filter((p) => p.mesh.visible);
     if (!vis.length) return;
     const FV = app.FV;
-    const vmax = FV.vmax > 0 ? FV.vmax : maxS;
-    const opts = { speed: FV.anim, fade: 0.985, ref: vmax, cmap: Math.max(0, COLORMAPS.indexOf(FV.cmap)) };
+    const isSpeed = QUANTITIES[FV.value]?.speed;
     const prev = renderer.getRenderTarget();
-    for (const p of vis) p.runPasses(renderer, quad, cam, lastReal, lastSim, opts);
+    for (const p of vis) {
+      const opts = {
+        speed: FV.anim,
+        fade: 0.985,
+        ref: isSpeed ? range.max : p.speedP95, // acuan laju untuk terang/redup partikel
+        cmap: Math.max(0, COLORMAPS.indexOf(FV.cmap)),
+        min: range.min,
+        max: range.max,
+      };
+      p.runPasses(renderer, quad, cam, lastReal, lastSim, opts);
+    }
     renderer.setRenderTarget(prev);
   }
 
@@ -531,9 +550,9 @@ export function createFlowViz(renderer, scene, app, flow, container) {
     setQuality,
     planes,
     debugAdvance,
-    /** batas atas skala warna yang sedang dipakai (cm/s) */
-    get vmax() {
-      return currentMax;
+    /** rentang skala warna yang sedang dipakai (satuan besaran) */
+    get range() {
+      return range;
     },
   };
 }

@@ -68,40 +68,17 @@ export function disposePoints(o) {
   o.p.material.dispose();
 }
 
-/** Partikel tetap: return, filter, permukaan tank, gelembung skimmer, buih. */
+/** Partikel tetap: aliran di selang return (1D, laju dari hidrolik), gelembung skimmer, buih. */
 export function buildFlowParticles(scene, returnPts, zout) {
   const fp = {};
   fp.ret = makePoints(14, 0xff8a00, 1.5, scene);
   fp.retPath = makePath(returnPts.concat([[41, zout + 0.2, 3.5]]));
-  fp.fil = makePoints(46, 0x00e0bc, 1.4, scene);
-  fp.filPath = makePath([
-    [5, 22.6, -7.5],
-    [5, 4, -7.5],
-    [10.75, 1.6, -7.5],
-    [16, 3, -7.5],
-    [16, 22.4, -7.5],
-    [21.25, 23.5, -7.5],
-    [23.5, 20.2, -7.5],
-    [29, 3.5, -7.5],
-    [36.75, 1.6, -7.5],
-    [38, 3.5, -7.5],
-    [38, 20, -7.5],
-    [39.25, 20.8, -7.5],
-    [41.2, 17.2, -7.5],
-    [44.5, 6, -7.5],
-  ]);
-  fp.tank = makePoints(34, 0xffffff, 1.2, scene);
-  fp.tankPath = makePath([
-    [41, 25.7, 3.5],
-    [32, 26.4, 9],
-    [18, 26.5, 10.5],
-    [8, 26.2, 6.5],
-    [5, 24.5, 3.5],
-  ]);
+  // (penanda skematis di tank & filter dihapus: lintasannya digambar tangan, bukan fisika.
+  //  Aliran di tank/filter kini ditampilkan dari CFD: jejak 3D, garis arus, kabut, pewarna.)
   fp.bub = makePoints(60, 0xffffff, 0.8, scene);
   for (let i = 0; i < fp.bub.n; i++) fp.bub.ph[i] = rnd();
   fp.foam = makePoints(66, 0xffffff, 0.9, scene);
-  fp.flowList = [fp.ret, fp.fil, fp.tank];
+  fp.flowList = [fp.ret];
   return fp;
 }
 

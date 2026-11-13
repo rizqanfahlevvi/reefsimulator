@@ -59,6 +59,8 @@ const hooks = {
   setAutoQuality: (v) => (autoQuality = v),
   resetFlow: () => (flow.resetNext = true),
   updElec: () => elec.update(),
+  /** pewarna air baru: 'pulse' | 'cont' | 'clear' */
+  dye: (mode, seconds) => (mode === 'clear' ? flow.clearDye() : flow.startDye(mode, seconds)),
   resetSettings: () => {
     saveEnabled = false;
     clearTimeout(saveTimer);
@@ -145,7 +147,8 @@ const studies = buildStudies(ui.studiesRoot, {
     study = { def, snap: JSON.parse(JSON.stringify(snapshot(app, EL))) };
     def.setup(app);
     restartSim();
-    def.action?.(app);
+    flow.clearDye();
+    def.action?.(app, { flow });
     refreshAll();
     if (def.view) world?.setView(def.view);
     studies.show(def);
@@ -154,6 +157,7 @@ const studies = buildStudies(ui.studiesRoot, {
     if (!study) return;
     restoreSnap(study.snap);
     study = null;
+    flow.clearDye();
     restartSim();
     refreshAll();
     world?.setView('iso');
@@ -217,6 +221,7 @@ function frame(now) {
   if (uiAcc > 0.2) {
     uiAcc = 0;
     metrics.update();
+    ui.setDyeStatus(flow.dyeStatus());
     if (elecTick++ % 5 === 0) elec.update();
   }
   chAcc += wall;

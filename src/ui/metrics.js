@@ -24,6 +24,12 @@ const MET = [
   ['mRes', 'Waktu kontak skimmer / bio'],
   ['mDead', 'Zona mati tank (<1 cm/s)', true],
   ['mDeadF', 'Zona mati filter (<1 cm/s)', true],
+  ['mAge', 'Umur air rata-rata tank'],
+  ['mAce', 'Efisiensi pertukaran air'],
+  ['mStag', 'Air tua (umur > 2× waktu tinggal)'],
+  ['mDyeT', 'Air baru (pewarna) tank / filter'],
+  ['mSalLoc', 'Salinitas lokal tank (min–maks)'],
+  ['mSalLocF', 'Salinitas lokal filter (min–maks)'],
   ['mFlow', 'Arus rata-rata / dasar'],
   ['mSal', 'Salinitas'],
   ['mAto', 'Air tawar dari ATO'],
@@ -116,10 +122,22 @@ export function buildMetrics() {
       set('mDead', fmt(flowStats.dead, 0) + '% · lemah ' + fmt(flowStats.weak, 0) + '%');
       set('mDeadF', flowStats.fdead !== undefined ? fmt(flowStats.fdead, 0) + '% · rata ' + fmt(flowStats.fmean, 1) + ' cm/s' : '-');
       set('mFlow', fmt(flowStats.mean, 1) + ' / ' + fmt(flowStats.bottom, 1) + ' cm/s');
+      // transport skalar: umur air, pertukaran, pewarna, salinitas lokal
+      const fs = flowStats;
+      if (fs.tauN > 0) {
+        set('mAge', fmt(fs.ageMean / 60, 1) + ' mnt · τ ' + fmt(fs.tauN / 60, 1) + ' mnt');
+        set('mAce', fmt(fs.ace * 100, 0) + '% (50% = campur sempurna)');
+        set('mStag', fmt(fs.stagnant, 0) + '% volume tank');
+      } else {
+        set('mAge', fs.ageMean !== undefined ? fmt(fs.ageMean / 60, 1) + ' mnt · aliran berhenti' : '-');
+        set('mAce', '-');
+        set('mStag', '-');
+      }
+      set('mDyeT', fs.dyeT !== undefined ? fmt(fs.dyeT * 100, 0) + '% / ' + fmt(fs.dyeF * 100, 0) + '%' : '-');
+      set('mSalLoc', fs.saltTmin !== undefined ? fmt(fs.saltTmin, 2) + '–' + fmt(fs.saltTmax, 2) + ' ppt' : '-');
+      set('mSalLocF', fs.saltFmin !== undefined ? fmt(fs.saltFmin, 2) + '–' + fmt(fs.saltFmax, 2) + ' ppt' : '-');
     } else {
-      set('mDead', '-');
-      set('mDeadF', '-');
-      set('mFlow', '-');
+      for (const id of ['mDead', 'mDeadF', 'mFlow', 'mAge', 'mAce', 'mStag', 'mDyeT', 'mSalLoc', 'mSalLocF']) set(id, '-');
     }
     set('mAto', fmt(S.ato / 1000, 2) + ' L');
     set('mSp', fmt(S.spill / 1000, 2) + ' L');

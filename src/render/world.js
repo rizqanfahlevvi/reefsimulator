@@ -276,11 +276,9 @@ export function createWorld(container, app, flow) {
     }
     for (const p of fp.flowList) p.p.visible = V.flow;
     movePoints(fp.ret, fp.retPath, S.vr * 0.35, simdt, 0.3, 0.3, 0.3, Math.abs(S.vr) < 1);
-    movePoints(fp.fil, fp.filPath, q.q23 / 11, simdt, 3.2, 0.6, 6, V.cfd || (Math.abs(q.q23) < 0.8 && Math.abs(q.q34) < 0.8));
-    movePoints(fp.tank, siphon.tankPath || fp.tankPath, q.r / 10, simdt, 3, 2.2, 7, q.r < 0.8 || V.cfd);
     if (V.cfd && V.tr3d && simdt > 0) tracers.update(Math.max(0.01, Math.min(0.06, simdt)), flow, S.HT);
-    fviz.update(real, simdt, { on: V.cfd && V.fog, p95: fog.p95, mode: app.FV.fogMode });
-    fog.update(fviz.vmax);
+    fviz.update(real, simdt, { on: V.cfd && V.fog, stats: fog.stats, mode: app.FV.fogMode });
+    fog.update(fviz.range);
 
     foamAt(fp.foam, tt, 0, 26, f2, 21.7, 23.4, S.H3, -12.2, -2.8);
     foamAt(fp.foam, tt, 26, 26, f4, 39.7, 41.4, S.HP, -12.2, -2.8);

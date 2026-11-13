@@ -86,7 +86,10 @@
             PCG/MIC(0), sehingga kekekalan massa terpenuhi hingga toleransi solver. Arus di filter juga dihitung 3D pada kisi MAC 49×30×10 (sel 1 cm) dengan solver yang sama: sekat 1 & 3
             bercelah bawah, sekat 2 & 4 sebagai weir, badan protein skimmer dan pompa sebagai benda padat, kapas dan media bio
             sebagai hambatan berpori, level air terpisah tiap chamber; terjunan di weir dimodelkan sebagai jet jatuh selebar chamber. Kedua solver
-            berjalan di Web Worker supaya animasi tidak tersendat. Hasil arus bersifat kualitatif. Udara di puncak U mengikuti kedalaman intake,
+            berjalan di Web Worker supaya animasi tidak tersendat. Hasil arus bersifat kualitatif. Air baru (pewarna dari duckbill), umur air
+            sejak keluar duckbill, dan salinitas lokal dibawa oleh medan arus itu (volume hingga konservatif, difusivitas turbulen) di tank dan
+            filter sebagai satu loop tertutup; air tawar ATO lebih ringan sehingga diberi gaya apung (Boussinesq). Efisiensi pertukaran air =
+            τ/(2·umur rata-rata), 50% berarti tercampur sempurna. Udara di puncak U mengikuti kedalaman intake,
             kecepatan gelembung Taylor (0,35·√gD), dan hisapan venturi. Kapas dihitung sebagai hambatan Darcy. Batu dan pasir mengurangi volume
             air sesuai slider. Salinitas dihitung dari neraca garam: ATO menambah air tawar, tumpahan membuang air asin. Ikan, karang, dan kaustik
             hanya visual. Angka adalah acuan untuk dikalibrasi saat uji air tawar, bukan pengganti uji itu.

@@ -8,10 +8,21 @@
  * - Hambatan berpori (Darcy) implisit per sel (kapas, media bio).
  * - Permukaan air sebagai tutup kaku per kolom (level bisa berbeda tiap chamber).
  * - Proyeksi tekanan A·φ = h²(s − ∇·u*) diselesaikan PCG + MIC(0): divergensi diskret ≈ sumber.
+ * - Transport skalar (umur air, pewarna, salinitas): volume hingga konservatif dengan fluks
+ *   muka MAC, rekonstruksi TVD van Leer, difusivitas turbulen K = ν_t/Sc_t + D_mol.
+ * - Gaya apung Boussinesq dari salinitas: a_y = −g·β_S·(S − S_ref).
  */
 import { PoissonSolver } from './poisson.js';
 
 export const VMAX = 150; // batas kecepatan (cm/s) untuk stabilitas
+const G_ACC = 981; // cm/s²
+/** Koefisien kontraksi halin air laut (per ppt), ±25 °C, 35 ppt. */
+export const BETA_S = 7.6e-4;
+/** Bilangan Schmidt turbulen (standar RANS) dan difusivitas molekuler garam di air (cm²/s). */
+export const SC_T = 0.7;
+export const D_MOL = 1.5e-5;
+/** Nama skalar yang diangkut. */
+export const SCALARS = ['age', 'dye', 'salt'];
 
 export class Mac3D {
   /** @param {{nx,ny,nz,h,NX,NY,NZ,SY,SZ,N,x0,y0,z0}} G */
@@ -54,6 +65,18 @@ export class Mac3D {
     this.solver = new PoissonSolver(N, this.STR);
     this.maskVer = 0;
     this.jets = []; // [c, u, v, w]
+    /** sumber per sel untuk transport skalar: [c, Q (cm³/s), tag] */
+    this.srcList = [];
+    /** medan skalar per sel: umur air (dtk), pewarna (0..1), salinitas (ppt) */
+    this.sc = { age: new Float32Array(N), dye: new Float32Array(N), salt: new Float32Array(N).fill(35) };
+    this.acc = { age: new Float64Array(N), dye: new Float64Array(N), salt: new Float64Array(N) };
+    this.buoyancy = true;
+    this.lastSubsteps = 0;
+  }
+
+  /** Isi semua sel dengan nilai skalar seragam. */
+  initScalars(vals) {
+    for (const k of SCALARS) if (vals[k] !== undefined) this.sc[k].fill(vals[k]);
   }
 
   /** Koordinat pusat sel (i, j, k). */
@@ -170,6 +193,7 @@ export class Mac3D {
   beginInputs() {
     this.jets.length = 0;
     this.src.fill(0);
+    this.srcList.length = 0;
   }
 
   jetAt(x, y, z, u, v, w) {
@@ -184,26 +208,30 @@ export class Mac3D {
   }
 
   /** Sumber volume titik (cm³/s; negatif = isapan). Mengembalikan false bila jatuh di sel padat. */
-  srcAt(x, y, z, Q) {
+  srcAt(x, y, z, Q, tag = 'vol') {
     const c = this.cellOf(x, y, z);
     if (c < 0) return false;
     this.src[c] += Q;
+    this.srcList.push([c, Q, tag]);
     return true;
   }
 
   /** Sumber volume dibagi rata melintang seluruh lebar (sumbu z). */
-  srcLine(x, y, Q) {
+  srcLine(x, y, Q, tag = 'vol') {
     const { nz } = this.G;
     const cells = [];
     for (let k = 1; k <= nz; k++) {
       const c = this.cellOf(x, y, this.zc(k));
       if (c >= 0) cells.push(c);
     }
-    for (const c of cells) this.src[c] += Q / cells.length;
+    for (const c of cells) {
+      this.src[c] += Q / cells.length;
+      this.srcList.push([c, Q / cells.length, tag]);
+    }
   }
 
   /** Sumber volume dibagi rata ke sel permukaan dengan x ∈ [x0, x1] (naik/turunnya muka air). */
-  srcSurface(x0, x1, Q) {
+  srcSurface(x0, x1, Q, tag = 'lvl') {
     const { nx, nz, NX, SY, SZ } = this.G;
     const cells = [];
     for (let i = 1; i <= nx; i++) {
@@ -216,7 +244,10 @@ export class Mac3D {
         if (!this.sol[c]) cells.push(c);
       }
     }
-    for (const c of cells) this.src[c] += Q / cells.length;
+    for (const c of cells) {
+      this.src[c] += Q / cells.length;
+      this.srcList.push([c, Q / cells.length, tag]);
+    }
   }
 
   applyJets() {
@@ -357,6 +388,20 @@ export class Mac3D {
       }
     }
 
+    // 3b) gaya apung Boussinesq dari salinitas (air tawar ATO lebih ringan → naik)
+    if (this.buoyancy) {
+      const S = this.sc.salt;
+      let sum = 0;
+      for (let m = 0; m < fluid.length; m++) sum += S[fluid[m]];
+      const Sref = fluid.length ? sum / fluid.length : 35;
+      const k = dt * G_ACC * BETA_S;
+      const list = this.faces[1];
+      for (let m = 0; m < list.length; m++) {
+        const c = list[m];
+        V[c] -= k * (0.5 * (S[c] + S[c - SY]) - Sref);
+      }
+    }
+
     this.applyJets();
 
     // 4) proyeksi: A·φ = h²(s − ∇·u*)
@@ -391,6 +436,183 @@ export class Mac3D {
       const s = Math.min(VMAX, Math.sqrt(uc * uc + vc * vc + wc * wc));
       avg[c] += (s - avg[c]) * em;
     }
+  }
+
+  /**
+   * Angkut skalar (umur air, pewarna, salinitas) sejauh dt dengan kecepatan muka saat ini.
+   *
+   * Volume hingga konservatif: perubahan isi sel = Σ fluks muka + sumber. Karena fluks
+   * muka MAC memenuhi Σ(keluar − masuk) = sumber (hasil proyeksi), medan seragam tetap
+   * seragam dan total isi skalar hanya berubah lewat sumber/sumur.
+   * @param {number} dt
+   * @param {(tag: string) => ({age: number, dye: number, salt: number} | null)} inflow
+   *   konsentrasi air masuk per tag sumber; null = konsentrasi lokal (perubahan volume saja)
+   */
+  transport(dt, inflow) {
+    const { h } = this.G;
+    const { F, STR, sol, spd, sc, acc } = this;
+    const fluid = this.fluidCells;
+    if (!fluid.length || dt <= 0) return;
+    const A = h * h;
+    const Vc = h * h * h;
+    // sub-langkah: syarat positivitas upwind per sel = Σ laju KELUAR lewat muka sel × dt/h ≤ 0,8
+    // (lebih tepat daripada 3·u_maks global; jet hanya keluar ke satu arah)
+    const outv = this.tmp;
+    for (let m = 0; m < fluid.length; m++) outv[fluid[m]] = 0;
+    for (let a = 0; a < 3; a++) {
+      const sa = STR[a];
+      const Fa = F[a];
+      const list = this.faces[a];
+      for (let m = 0; m < list.length; m++) {
+        const R = list[m];
+        const v = Fa[R];
+        if (v > 0) outv[R - sa] += v;
+        else outv[R] -= v;
+      }
+    }
+    let umax = 0;
+    for (let m = 0; m < fluid.length; m++) {
+      const v = outv[fluid[m]];
+      if (v > umax) umax = v;
+    }
+    const n = Math.min(40, Math.max(1, Math.ceil((umax * dt) / h / 0.8)));
+    const ds = dt / n;
+    this.lastSubsteps = n;
+    const ageS = sc.age;
+    const dyeS = sc.dye;
+    const saltS = sc.salt;
+    const aA = acc.age;
+    const aD = acc.dye;
+    const aS = acc.salt;
+    const cin = new Map();
+    for (const e of this.srcList) if (!cin.has(e[2])) cin.set(e[2], inflow(e[2]));
+    // Koreksi divergensi: solver tekanan berhenti pada toleransi (±1e-4), sisa divergensi
+    // r = Σ fluks keluar − sumber. Tanpa koreksi, latar 35 ppt × r menumpuk jadi error ppt.
+    // Menambah C·r ke tiap sel menjamin medan seragam tetap seragam (error kekekalan ±r·C saja).
+    const res = this.resid || (this.resid = new Float64Array(this.G.N));
+    for (let m = 0; m < fluid.length; m++) {
+      const c = fluid[m];
+      res[c] = -this.src[c];
+    }
+    for (let a = 0; a < 3; a++) {
+      const sa = STR[a];
+      const Fa = F[a];
+      const list = this.faces[a];
+      for (let m = 0; m < list.length; m++) {
+        const R = list[m];
+        const q = Fa[R] * A;
+        res[R - sa] += q; // keluar dari L
+        res[R] -= q; // masuk ke R
+      }
+    }
+    // rekonstruksi TVD van Leer: nilai di muka dari sel hulu (u), hulu-hulu (uu), hilir (d)
+    const face = (uu, u, d) => {
+      const d1 = u - uu;
+      const d2 = d - u;
+      return d1 * d2 > 0 ? u + (d1 * d2) / (d1 + d2) : u;
+    };
+    const kdMax = (0.12 * Vc) / ds; // batas stabilitas difusi eksplisit
+    for (let it = 0; it < n; it++) {
+      for (let m = 0; m < fluid.length; m++) {
+        const c = fluid[m];
+        aA[c] = Vc; // sumber umur: +1 dtk per dtk di setiap volume air
+        aD[c] = 0;
+        aS[c] = 0;
+      }
+      for (let a = 0; a < 3; a++) {
+        const sa = STR[a];
+        const Fa = F[a];
+        const list = this.faces[a];
+        for (let m = 0; m < list.length; m++) {
+          const R = list[m];
+          const L = R - sa;
+          const q = Fa[R] * A; // fluks volume L→R (cm³/s)
+          let fa;
+          let fd;
+          let fs;
+          if (q >= 0) {
+            const LL = sol[L - sa] ? L : L - sa;
+            fa = face(ageS[LL], ageS[L], ageS[R]);
+            fd = face(dyeS[LL], dyeS[L], dyeS[R]);
+            fs = face(saltS[LL], saltS[L], saltS[R]);
+          } else {
+            const RR = sol[R + sa] ? R : R + sa;
+            fa = face(ageS[RR], ageS[R], ageS[L]);
+            fd = face(dyeS[RR], dyeS[R], dyeS[L]);
+            fs = face(saltS[RR], saltS[R], saltS[L]);
+          }
+          // difusivitas turbulen K = ν_t/Sc_t + D_mol, ν_t sama dengan model momentum
+          const K = (0.04 * h * 0.5 * (spd[L] + spd[R]) + 0.004 * h * h) / SC_T + D_MOL;
+          let kd = K * h; // K·A/h
+          if (kd > kdMax) kd = kdMax;
+          const xa = q * fa - kd * (ageS[R] - ageS[L]);
+          const xd = q * fd - kd * (dyeS[R] - dyeS[L]);
+          const xs = q * fs - kd * (saltS[R] - saltS[L]);
+          aA[L] -= xa;
+          aA[R] += xa;
+          aD[L] -= xd;
+          aD[R] += xd;
+          aS[L] -= xs;
+          aS[R] += xs;
+        }
+      }
+      // sumber (air masuk dengan konsentrasinya) dan sumur (keluar pada konsentrasi lokal)
+      for (const [c, Q, tag] of this.srcList) {
+        const ci = Q > 0 ? cin.get(tag) : null;
+        aA[c] += Q * (ci ? ci.age : ageS[c]);
+        aD[c] += Q * (ci ? ci.dye : dyeS[c]);
+        aS[c] += Q * (ci ? ci.salt : saltS[c]);
+      }
+      const k = ds / Vc;
+      for (let m = 0; m < fluid.length; m++) {
+        const c = fluid[m];
+        const r = res[c];
+        const ag = ageS[c] + k * (aA[c] + r * ageS[c]);
+        const dy = dyeS[c] + k * (aD[c] + r * dyeS[c]);
+        const sl = saltS[c] + k * (aS[c] + r * saltS[c]);
+        ageS[c] = ag > 0 ? ag : 0;
+        dyeS[c] = dy < 0 ? 0 : dy > 1 ? 1 : dy;
+        saltS[c] = sl > 0 ? sl : 0;
+      }
+    }
+  }
+
+  /** Rata-rata skalar terbobot debit pada sumur bertag (mis. intake). null bila tidak ada aliran. */
+  sinkMean(tags) {
+    let q = 0;
+    let a = 0;
+    let d = 0;
+    let s = 0;
+    for (const [c, Q, tag] of this.srcList) {
+      if (Q >= 0 || !tags.includes(tag)) continue;
+      q -= Q;
+      a -= Q * this.sc.age[c];
+      d -= Q * this.sc.dye[c];
+      s -= Q * this.sc.salt[c];
+    }
+    return q > 1e-9 ? { q, age: a / q, dye: d / q, salt: s / q } : null;
+  }
+
+  /** Statistik skalar terbobot volume. */
+  scalarStats() {
+    const fluid = this.fluidCells;
+    const { age, dye, salt } = this.sc;
+    let sa = 0;
+    let sd = 0;
+    let ss = 0;
+    let smin = Infinity;
+    let smax = -Infinity;
+    for (let m = 0; m < fluid.length; m++) {
+      const c = fluid[m];
+      sa += age[c];
+      sd += dye[c];
+      ss += salt[c];
+      if (salt[c] < smin) smin = salt[c];
+      if (salt[c] > smax) smax = salt[c];
+    }
+    const n = Math.max(1, fluid.length);
+    const h = this.G.h;
+    return { volume: fluid.length * h * h * h, age: sa / n, dye: sd / n, salt: ss / n, saltMin: smin, saltMax: smax };
   }
 
   /** Tulis kecepatan pusat sel + laju rata-rata ke buffer keluaran. */

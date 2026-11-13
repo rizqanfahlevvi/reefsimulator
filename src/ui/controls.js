@@ -3,6 +3,7 @@ import { app, emit, waterLitres, salinity, resetState } from '../state.js';
 import { defaultParams, initialState } from '../physics/hydraulics.js';
 import { fmt, $, el } from '../util/format.js';
 import { COLORMAPS, COLORMAP_LABELS } from '../render/colormaps.js';
+import { QUANTITY_OPTIONS } from '../render/quantity.js';
 
 const GROUPS = ['Air', 'Pompa return', 'Siphon U-pipe', 'Arus & visualisasi CFD', 'Filter dan pengaman', 'Ornamen', 'Tampilan dan simulasi', 'Skimmer, latar, dan lampu'];
 /** Grup yang terbuka saat halaman dimuat (kosong = semua tertutup, panel ringkas). */
@@ -90,7 +91,7 @@ export function buildControls(h) {
     { g: 5, id: 'sand', view: true, label: 'Pasir' },
     { g: 5, id: 'lamp', view: true, label: 'Lampu LED' },
     { g: 5, id: 'room', view: true, label: 'Lemari dan ruangan' },
-    { g: 6, id: 'flow', view: true, label: 'Penanda aliran di pipa dan filter' },
+    { g: 6, id: 'flow', view: true, label: 'Penanda aliran di dalam pipa (siphon & selang return)' },
     { g: 6, id: 'clear', view: true, label: 'Pipa bening (lihat air dan udara di dalam)' },
     { g: 6, id: 'label', view: true, label: 'Label nama' },
   ];
@@ -206,14 +207,42 @@ export function buildControls(h) {
     applyView();
   }).value = app.FV.orient;
   selectRow(gs[3], 'Sorot pada kabut 3D', 'fvFogMode', [
-    ['fast', 'Arus kuat (jet duckbill / wavemaker)'],
+    ['fast', 'Nilai tinggi menonjol (jet / air tua / pewarna)'],
     ['dead', 'Zona mati (laju < 1 cm/s)'],
-    ['all', 'Semua laju'],
+    ['low', 'Nilai rendah menonjol (mis. air tawar ATO)'],
+    ['all', 'Semua nilai'],
   ], (v) => (app.FV.fogMode = v)).value = app.FV.fogMode;
-  selectRow(gs[3], 'Nilai pada peta warna', 'fvValue', [
-    ['inst', 'Laju arus sesaat'],
-    ['avg', 'Laju rata-rata 8 detik (zona mati)'],
-  ], (v) => (app.FV.value = v)).value = app.FV.value;
+  selectRow(gs[3], 'Besaran yang ditampilkan', 'fvValue', QUANTITY_OPTIONS, (v) => (app.FV.value = v)).value = app.FV.value;
+
+  /* pewarna "air baru dari filter" */
+  const dyeStatus = el('span', { className: 'dye-status', textContent: 'Pewarna: tidak dilepas' });
+  const dyeBox = el('div', {}, [
+    el('p', {
+      className: 'note',
+      textContent:
+        'Tandai air yang keluar dari duckbill, lalu lihat bagaimana air itu menyebar di tank, tersedot intake, melewati filter, dan kembali. Pilih besaran "Air baru dari filter (%)" dan nyalakan kabut 3D atau bidang potong.',
+    }),
+  ]);
+  {
+    const b = el('div', { className: 'btns' });
+    const mk = (text, fn) => {
+      const e = el('button', { textContent: text });
+      e.addEventListener('click', () => {
+        fn();
+        if (app.FV.value !== 'dye') {
+          app.FV.value = 'dye';
+          syncUI();
+        }
+      });
+      b.append(e);
+    };
+    mk('Lepas pewarna 20 dtk', () => h.dye('pulse', 20));
+    mk('Pewarna terus-menerus', () => h.dye('cont'));
+    const clr = el('button', { textContent: 'Hapus pewarna' });
+    clr.addEventListener('click', () => h.dye('clear'));
+    b.append(clr);
+    dyeBox.append(b, dyeStatus);
+  }
   selectRow(gs[3], 'Palet warna', 'fvCmap', COLORMAPS.map((k) => [k, COLORMAP_LABELS[k]]), (v) => (app.FV.cmap = v)).value = app.FV.cmap;
   const legend3d = el('div', {
     className: 'lg',
@@ -438,8 +467,9 @@ export function buildControls(h) {
       groups: [
         ['Simulasi & jejak arus', ['t_cfd', 't_tr3d', legend3d, modeBtns, note3]],
         ['Bidang potong (peta + garis arus)', ['t_planeOn', 'fvOrient', 's_sliceY', 's_sliceZ', 't_filterPlane', 's_filterZ', 's_mapAlpha', 's_anim']],
-        ['Kabut kecepatan 3D', ['t_fog', 'fvFogMode', 's_fogDensity']],
-        ['Warna & skala', ['fvValue', 'fvCmap', 's_vmax']],
+        ['Besaran & warna', ['fvValue', 'fvCmap', 's_vmax']],
+        ['Kabut 3D', ['t_fog', 'fvFogMode', 's_fogDensity']],
+        ['Pewarna air baru', [dyeBox]],
       ],
     },
     { id: 'studi', title: 'Studi', content: [] },
@@ -497,5 +527,10 @@ export function buildControls(h) {
   }
   showTab('tank');
 
-  return { syncUI, applyView, markSaved, U, showTab, studiesRoot: sections.studi };
+  function setDyeStatus(t) {
+    const txt = 'Pewarna: ' + t;
+    if (dyeStatus.textContent !== txt) dyeStatus.textContent = txt;
+  }
+
+  return { syncUI, applyView, markSaved, U, showTab, setDyeStatus, studiesRoot: sections.studi };
 }

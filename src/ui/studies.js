@@ -65,6 +65,55 @@ export const STUDIES = [
     action: breakSiphons,
   },
   {
+    id: 'air-baru',
+    title: 'Air baru dari filter mengisi tank',
+    desc: 'Bagaimana air yang baru keluar dari filter menyebar, lalu tersedot kembali ke intake?',
+    watch:
+      'Kabut menandai air yang keluar dari duckbill (pewarna terus-menerus). Perhatikan jalur jet, area yang lama terisi (ruang mati), lalu air bertanda masuk intake dan muncul di filter. Metrik "Air baru tank / filter" (tab Metrik) naik menuju 100%; waktu khasnya = waktu tinggal τ (±5 menit).',
+    view: 'iso',
+    setup(a) {
+      cleanView(a, false);
+      a.V.fog = true;
+      Object.assign(a.FV, { value: 'dye', fogMode: 'fast' });
+      a.SPD = 10;
+    },
+    action(a, ctx) {
+      ctx?.flow.startDye('cont');
+    },
+  },
+  {
+    id: 'umur-air',
+    title: 'Umur air & ruang mati',
+    desc: 'Di mana air paling lama tidak tergantikan oleh air dari filter?',
+    watch:
+      'Kabut menyorot air tua (umur tinggi) = ruang mati sebenarnya. Metrik "Umur air rata-rata", "Efisiensi pertukaran air" (50% = campur sempurna; lebih rendah = ada jalan pintas/ruang mati) dan "Air tua" ada di tab Metrik. Butuh ±10 menit simulasi untuk stabil.',
+    view: 'iso',
+    setup(a) {
+      cleanView(a, false);
+      a.V.fog = true;
+      Object.assign(a.FV, { value: 'age', fogMode: 'fast' });
+      a.SPD = 20;
+    },
+  },
+  {
+    id: 'ato-salinitas',
+    title: 'ATO & salinitas lokal',
+    desc: 'Ke mana air tawar dari ATO pergi sebelum tercampur?',
+    watch:
+      'Level chamber pompa diturunkan 2,5 cm — setara penguapan ±250 mL air tawar (garam tertinggal, salinitas naik sedikit) — sehingga ATO menyala. Kabut menyorot air yang lebih tawar dari tetesan ATO; gaya apung membuatnya cenderung di permukaan sebelum teraduk terjunan weir dan tersedot pompa. Metrik "Salinitas" dan "Salinitas lokal" ada di tab Metrik.',
+    view: 'back',
+    setup(a) {
+      cleanView(a, false);
+      a.P.ato = true;
+      a.V.fog = true;
+      Object.assign(a.FV, { value: 'salt', fogMode: 'low' });
+      a.SPD = 3;
+    },
+    action(a) {
+      a.S.HP -= 2.5;
+    },
+  },
+  {
     id: 'kapas',
     title: 'Kapas mampet 85%',
     desc: 'Bagaimana kapas yang kotor menaikkan level chamber pertama?',

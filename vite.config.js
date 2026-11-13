@@ -14,5 +14,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.js'],
+    // uji fisika CFD menjalankan ratusan langkah solver
+    testTimeout: 60000,
   },
 });

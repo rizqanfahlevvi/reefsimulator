@@ -73,11 +73,11 @@ export const SPEC = {
     sliceZ: num(1, 24),
     filterZ: num(0.5, 9.5),
     cmap: oneOf('turbo', 'plasma', 'viridis'),
-    value: oneOf('inst', 'avg'),
+    value: oneOf('inst', 'avg', 'age', 'dye', 'salt'),
     vmax: num(0, 30),
     mapAlpha: num(0, 1),
     anim: num(0.5, 5),
-    fogMode: oneOf('fast', 'dead', 'all'),
+    fogMode: oneOf('fast', 'dead', 'all', 'low'),
     fogDensity: num(0.1, 3),
   },
   /** nilai langsung di objek app */

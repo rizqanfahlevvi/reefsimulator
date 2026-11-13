@@ -165,13 +165,6 @@ export function createSiphon(scene, M) {
     }
     b.build(sipG);
 
-    state.tankPath = makePath([
-      [41, 25.7, 3.5],
-      [32, 26.4, 9],
-      [18, 24, 10.5],
-      [9, Math.min(24, zin + 6), P.box ? 9 : 6.5],
-      [5, P.box ? 27 : zin + 0.8, P.box ? 6.6 : 3.5],
-    ]);
   };
   return state;
 }

@@ -13,10 +13,12 @@ import * as THREE from 'three';
 import { colormapGLSL, COLORMAPS } from './colormaps.js';
 import { T3, F3 } from '../cfd/grid.js';
 import { filterOpaque, FILTER } from '../layout.js';
+import { percentiles } from './quantity.js';
 
 const MAX_STEPS = 160;
 const STEP_BY_QUALITY = [0.45, 0.6, 0.8, 1.2]; // cm per langkah sinar
-const MODES = ['fast', 'dead', 'all'];
+/** fast = nilai tinggi menonjol, dead = zona mati (laju < 1 cm/s), all = semua, low = nilai rendah menonjol */
+const MODES = ['fast', 'dead', 'all', 'low'];
 
 /** Warna kabut zona mati: laju 0 → DEAD_LO, laju DEAD_MAX cm/s → DEAD_HI (sRGB). */
 export const DEAD_LO = [0.92, 0.08, 0.32];
@@ -28,7 +30,7 @@ const glv3 = (a) => `vec3(${a.map((x) => x.toFixed(3)).join(', ')})`;
 const FRAG = /* glsl */ `
 uniform sampler3D uVol;
 uniform vec3 uBoxMin; uniform vec3 uBoxMax; uniform vec3 uTexMin; uniform vec3 uTexSize;
-uniform float uMax; uniform float uDensity; uniform float uStep; uniform int uCmap; uniform int uMode;
+uniform float uMin; uniform float uMax; uniform float uDensity; uniform float uStep; uniform int uCmap; uniform int uMode;
 varying vec3 vWorld;
 ${colormapGLSL()}
 vec3 deadColor(float sp) {
@@ -54,16 +56,17 @@ void main() {
   for (int i = 0; i < ${MAX_STEPS}; i++) {
     if (tc > t.y) break;
     vec3 p = ro + rd * tc;
-    vec2 s = texture(uVol, (p - uTexMin) / uTexSize).rg;
+    vec3 s = texture(uVol, (p - uTexMin) / uTexSize).rgb;   // r besaran, g jenis sel, b laju
     if (s.g < 0.25) break;                        // penghalang buram
     float fl = smoothstep(0.6, 0.9, s.g);         // 0,5 = kosong & tembus
     tc += uStep;
     if (fl <= 0.0) continue;
-    float sp = s.r;
-    float tt = sp / uMax;
-    float w = uMode == 0 ? pow(clamp(tt, 0.0, 1.0), 1.4)          // arus kuat menonjol
-            : uMode == 1 ? 0.3 * smoothstep(1.4, 0.5, sp)         // zona mati (< 1 cm/s) menonjol
-            : 0.4 * (0.2 + 0.8 * clamp(tt, 0.0, 1.0));            // semua laju
+    float sp = s.b;
+    float tt = clamp((s.r - uMin) / max(uMax - uMin, 1e-4), 0.0, 1.0);
+    float w = uMode == 0 ? pow(tt, 1.4)                           // nilai tinggi menonjol (jet, air tua, pewarna)
+            : uMode == 1 ? 0.3 * smoothstep(1.4, 0.5, sp)         // zona mati (laju < 1 cm/s)
+            : uMode == 3 ? pow(1.0 - tt, 1.4)                     // nilai rendah menonjol (air tawar ATO)
+            : 0.4 * (0.2 + 0.8 * tt);                             // semua nilai
     float a = 1.0 - exp(-uDensity * w * fl * uStep);
     // zona mati memakai warna peringatan sendiri (merah tua = diam, oranye = ±1 cm/s)
     vec3 c = uMode == 1 ? deadColor(sp) : cmap(tt, uCmap);
@@ -96,9 +99,9 @@ void main() {
 function createFogVolume(scene, app, flow, camera, spec) {
   const G = spec.G;
   const { nx, ny, nz, h, SY, SZ } = G;
-  const data = new Uint16Array(nx * ny * nz * 2);
+  const data = new Uint16Array(nx * ny * nz * 4);
   const tex = new THREE.Data3DTexture(data, nx, ny, nz);
-  tex.format = THREE.RGFormat;
+  tex.format = THREE.RGBAFormat;
   tex.type = THREE.HalfFloatType;
   tex.minFilter = tex.magFilter = THREE.LinearFilter;
   tex.wrapS = tex.wrapT = tex.wrapR = THREE.ClampToEdgeWrapping;
@@ -114,6 +117,7 @@ function createFogVolume(scene, app, flow, camera, spec) {
       // pusat sel i (1..nx) di x = x0 + (i − 0,5)·h → koordinat tekstur (i − 0,5)/nx
       uTexMin: { value: new THREE.Vector3(G.x0, G.y0, G.z0) },
       uTexSize: { value: new THREE.Vector3(nx * h, ny * h, nz * h) },
+      uMin: { value: 0 },
       uMax: { value: 6 },
       uDensity: { value: 0.6 },
       uStep: { value: STEP_BY_QUALITY[0] },
@@ -141,44 +145,51 @@ function createFogVolume(scene, app, flow, camera, spec) {
   let lastVersion = -1;
   let lastKey = '';
   let lastRefresh = 0;
-  let p95 = 3;
+  let stats = null;
   const xc = (i) => G.x0 + (i - 0.5) * h;
   const yc = (j) => G.y0 + (j - 0.5) * h;
   const zc = (k) => G.z0 + (k - 0.5) * h;
 
   function refresh() {
     const { S, FV } = app;
-    const useAvg = FV.value === 'avg';
+    const q = FV.value;
     const lidJ = spec.lidJ(S);
-    const { u, v, w, avg, sol } = spec.fields();
+    const f = spec.fields();
     let nf = 0;
     for (let k = 1; k <= nz; k++)
       for (let i = 1; i <= nx; i++) {
-        let top = 0; // laju sel fluida teratas kolom (diteruskan ke sel di atas permukaan tank)
+        let top = 0; // nilai sel fluida teratas kolom (diteruskan ke sel di atas permukaan tank)
+        let topSp = 0;
         for (let j = 1; j <= ny; j++) {
           const c = i + SY * j + SZ * k;
-          const t = (i - 1 + nx * (j - 1 + ny * (k - 1))) * 2;
+          const t = (i - 1 + nx * (j - 1 + ny * (k - 1))) * 4;
+          let val = 0;
           let sp = 0;
           let g = 1;
-          if (j > lidJ) sp = top;
-          else if (sol[c]) g = spec.solidValue(xc(i), yc(j), zc(k));
+          if (j > lidJ) {
+            val = top;
+            sp = topSp;
+          } else if (f.sol[c]) g = spec.solidValue(xc(i), yc(j), zc(k));
           else {
-            sp = useAvg ? avg[c] : Math.hypot(u[c], v[c], w[c]);
-            top = sp;
-            speeds[nf++] = sp;
+            sp = Math.hypot(f.u[c], f.v[c], f.w[c]);
+            val =
+              q === 'avg' ? f.avg[c] : q === 'age' ? f.age[c] / 60 : q === 'dye' ? f.dye[c] * 100 : q === 'salt' ? f.salt[c] : sp;
+            top = val;
+            topSp = sp;
+            speeds[nf++] = val;
           }
-          data[t] = toHalf(sp);
+          data[t] = toHalf(val);
           data[t + 1] = toHalf(g);
+          data[t + 2] = toHalf(sp);
+          data[t + 3] = 0;
         }
       }
     tex.needsUpdate = true;
-    if (nf > 10) {
-      const arr = speeds.subarray(0, nf).slice().sort();
-      p95 = arr[Math.floor(nf * 0.95)];
-    }
+    stats = percentiles(speeds, nf);
   }
 
-  function update(vmax) {
+  /** @param {{min: number, max: number}} range rentang skala warna (sama dengan bidang & legenda) */
+  function update(range) {
     const { V, FV, S } = app;
     const on = V.cfd && V.fog;
     mesh.visible = on;
@@ -189,7 +200,8 @@ function createFogVolume(scene, app, flow, camera, spec) {
     const un = mat.uniforms;
     un.uBoxMin.value.copy(boxMin);
     un.uBoxMax.value.copy(boxMax);
-    un.uMax.value = vmax;
+    un.uMin.value = range.min;
+    un.uMax.value = range.max;
     un.uDensity.value = FV.fogDensity;
     un.uCmap.value = Math.max(0, COLORMAPS.indexOf(FV.cmap));
     un.uMode.value = Math.max(0, MODES.indexOf(FV.fogMode));
@@ -213,8 +225,8 @@ function createFogVolume(scene, app, flow, camera, spec) {
     setQuality(level) {
       mat.uniforms.uStep.value = STEP_BY_QUALITY[Math.max(0, Math.min(3, level))];
     },
-    get p95() {
-      return p95;
+    get stats() {
+      return stats;
     },
   };
 }
@@ -223,7 +235,7 @@ function createFogVolume(scene, app, flow, camera, spec) {
 export function createFlowFog(scene, app, flow, camera) {
   const tank = createFogVolume(scene, app, flow, camera, {
     G: T3,
-    fields: () => ({ u: flow.fu, v: flow.fv, w: flow.fw, avg: flow.favg, sol: flow.fsol }),
+    fields: () => ({ u: flow.fu, v: flow.fv, w: flow.fw, avg: flow.favg, sol: flow.fsol, age: flow.sc.ta, dye: flow.sc.td, salt: flow.sc.ts }),
     lidJ: (S) => Math.max(1, Math.min(T3.ny, Math.ceil(S.HT / T3.h + 0.5) - 1)),
     solidValue: () => 0, // batu, pasir, overflow box
     box: (S, mn, mx) => {
@@ -234,7 +246,7 @@ export function createFlowFog(scene, app, flow, camera) {
   });
   const filter = createFogVolume(scene, app, flow, camera, {
     G: F3,
-    fields: () => ({ u: flow.ffu, v: flow.ffv, w: flow.ffw, avg: flow.ffavg, sol: flow.ffsol }),
+    fields: () => ({ u: flow.ffu, v: flow.ffv, w: flow.ffw, avg: flow.ffavg, sol: flow.ffsol, age: flow.sc.fa, dye: flow.sc.fd, salt: flow.sc.fs }),
     lidJ: () => Infinity, // level tiap chamber berbeda: di atas air = kosong tembus
     solidValue: (x, y, z) => (filterOpaque(x, y, z) ? 0 : 0.5),
     box: (S, mn, mx) => {
@@ -245,15 +257,18 @@ export function createFlowFog(scene, app, flow, camera) {
   });
   const vols = [tank, filter];
   return {
-    update(vmax) {
-      for (const v of vols) v.update(vmax);
+    update(range) {
+      for (const v of vols) v.update(range);
     },
     setQuality(level) {
       for (const v of vols) v.setQuality(level);
     },
-    /** persentil 95 laju gabungan (untuk skala warna otomatis) */
-    get p95() {
-      return Math.max(tank.p95, filter.p95);
+    /** persentil besaran gabungan tank + filter (untuk skala warna otomatis) */
+    get stats() {
+      const a = tank.stats;
+      const b = filter.stats;
+      if (!a || !b) return a || b;
+      return { p02: Math.min(a.p02, b.p02), p95: Math.max(a.p95, b.p95), p98: Math.max(a.p98, b.p98) };
     },
   };
 }

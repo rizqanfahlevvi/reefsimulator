@@ -21,9 +21,9 @@ function message(dt, extra = {}) {
     box: false,
     jets: [[tip[0], tip[1], tip[2], d[0] * U, d[1] * U, d[2] * U]],
     vols: [
-      [tip[0], tip[1], tip[2], Q],
-      [5, 8.8, 3.5, -50],
-      [5, 26.5, 6.9, -40],
+      [tip[0], tip[1], tip[2], Q, 'ret'],
+      [5, 8.8, 3.5, -50, 'in'],
+      [5, 26.5, 6.9, -40, 'in'],
     ],
     filter: {
       L: [23.35, 23.13, 20.63, 18],
@@ -34,18 +34,22 @@ function message(dt, extra = {}) {
       ],
       ljets: [[22, 20.3, 0, -20, 0]],
       pts: [
-        [5, 21.7, -7.5, 90],
-        [44.5, 2.4, -3.8, -90],
+        [4.5, 21.7, -8, 22.5, 'sip'],
+        [5.5, 21.7, -8, 22.5, 'sip'],
+        [4.5, 21.7, -7, 22.5, 'sip'],
+        [5.5, 21.7, -7, 22.5, 'sip'],
+        ...[-1, 0, 1].flatMap((dx) => [-1, 0, 1].map((dy) => [44.5 + dx, 2.4 + dy, -3.8, -10, 'pump'])),
       ],
       lines: [
-        [22, 20.3, 90],
-        [40, 17.7, 90],
+        [22, 20.3, 90, 'w2d'],
+        [40, 17.7, 90, 'w4d'],
       ],
       strips: [
-        [19.5, 20.9, -90],
-        [37.5, 38.9, -90],
+        [19.5, 20.9, -90, 'w2u'],
+        [37.5, 38.9, -90, 'w4u'],
       ],
     },
+    scal: { salt0: 35 },
     wantStats: true,
     reset: false,
     bu: new Float32Array(T3.N),
@@ -56,6 +60,12 @@ function message(dt, extra = {}) {
     bfv: new Float32Array(F3.N),
     bfw: new Float32Array(F3.N),
     bfm: new Float32Array(F3.N),
+    bta: new Float32Array(T3.N),
+    btd: new Float32Array(T3.N),
+    bts: new Float32Array(T3.N),
+    bfa: new Float32Array(F3.N),
+    bfd: new Float32Array(F3.N),
+    bfs: new Float32Array(F3.N),
     ...extra,
   };
 }
@@ -205,5 +215,98 @@ describe('pesan filter dari klien', () => {
       for (const s of f.strips) sum[comp((s[0] + s[1]) / 2)] += s[2];
       for (const v of sum) expect(Math.abs(v)).toBeLessThan(1e-9);
     }
+  });
+});
+
+describe('transport skalar (umur air, pewarna, salinitas)', () => {
+  const content = (D, key) => {
+    let t = 0;
+    for (const c of D.fluidCells) t += D.sc[key][c];
+    return t * D.G.h ** 3;
+  };
+  function engine() {
+    let out;
+    const eng = createFlowEngine((o) => {
+      out = o;
+    });
+    eng({ t: 'init', rocks: ROCKS });
+    return { eng, get out() { return out; } };
+  }
+
+  it('medan salinitas seragam tetap seragam (fluks konsisten dengan divergensi)', () => {
+    const { eng } = engine();
+    for (let n = 0; n < 80; n++) eng(message(0.1));
+    const { tank, filt } = eng.debug;
+    for (const D of [tank, filt]) {
+      let mn = Infinity;
+      let mx = -Infinity;
+      for (const c of D.fluidCells) {
+        mn = Math.min(mn, D.sc.salt[c]);
+        mx = Math.max(mx, D.sc.salt[c]);
+      }
+      expect(mx - mn).toBeLessThan(0.02); // ppt
+    }
+  });
+
+  it('pewarna kekal dalam siklus tertutup tank → filter → tank', () => {
+    const { eng } = engine();
+    for (let n = 0; n < 60; n++) eng(message(0.1));
+    for (let n = 0; n < 40; n++) eng(message(0.25, { scal: { salt0: 35, dyeIn: 1 } })); // pulsa 10 dtk
+    const { tank, filt } = eng.debug;
+    const d0 = content(tank, 'dye') + content(filt, 'dye');
+    expect(d0).toBeGreaterThan(100);
+    for (let n = 0; n < 200; n++) eng(message(0.25));
+    const d1 = content(tank, 'dye') + content(filt, 'dye');
+    expect(Math.abs(d1 - d0) / d0).toBeLessThan(0.01);
+    // pewarna sudah sampai ke filter lewat siphon
+    expect(content(filt, 'dye')).toBeGreaterThan(1);
+  });
+
+  it('neraca umur air: d(isi umur)/dt = V − Q·umur_keluar (tanpa sumber palsu)', () => {
+    const { eng } = engine();
+    for (let n = 0; n < 100; n++) eng(message(0.1));
+    const { tank } = eng.debug;
+    const V = tank.scalarStats().volume;
+    const a0 = content(tank, 'age');
+    const out0 = tank.sinkMean(['in']);
+    const dt = 0.05;
+    eng(message(dt));
+    const out1 = tank.sinkMean(['in']);
+    const dA = (content(tank, 'age') - a0) / dt;
+    const expected = V - out0.q * 0.5 * (out0.age + out1.age); // umur air masuk dari duckbill = 0
+    expect(Math.abs(dA - expected) / V).toBeLessThan(0.05);
+  });
+
+  it('rata-rata salinitas mengikuti neraca garam hidrolik (saltRef) saat ATO menambah air tawar', () => {
+    const { eng } = engine();
+    for (let n = 0; n < 60; n++) eng(message(0.1, { scal: { salt0: 35, saltRef: 35 } }));
+    for (let n = 0; n < 50; n++) {
+      const m = message(0.1, { scal: { salt0: 35, saltRef: 34.8 } });
+      m.filter.pts.push([47.5, 17.7, -11, 16.7, 'ato']);
+      m.filter.strips.push([39.5, 49.5, -16.7, 'lvl']);
+      eng(m);
+    }
+    const { tank, filt } = eng.debug;
+    const vT = tank.scalarStats();
+    const vF = filt.scalarStats();
+    const mean = (vT.salt * vT.volume + vF.salt * vF.volume) / (vT.volume + vF.volume);
+    expect(mean).toBeCloseTo(34.8, 3);
+    // plume air tawar lokal tetap terlihat di chamber pompa
+    expect(vF.saltMin).toBeLessThan(34);
+  });
+
+  it('umur air tidak melonjak saat pompa baru mulai (debit kecil di langkah pertama)', () => {
+    const { eng } = engine();
+    const scale = (m, f) => {
+      m.vols = m.vols.map((v) => [v[0], v[1], v[2], v[3] * f, v[4]]);
+      return m;
+    };
+    eng(scale(message(0.1), 0.03)); // langkah pertama: pompa baru berputar (±3 cm³/s)
+    for (let n = 0; n < 80; n++) eng(message(0.1));
+    const { tank } = eng.debug;
+    const tau = tank.scalarStats().volume / 90;
+    const st = tank.scalarStats();
+    expect(st.age).toBeLessThan(2 * tau);
+    expect(st.age).toBeGreaterThan(0.5 * tau);
   });
 });

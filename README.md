@@ -64,6 +64,7 @@ src/
     flowviz.js          bidang potong CFD: peta warna + garis arus GPU
     flowfog.js          kabut kecepatan 3D (volume rendering ray marching)
     colormaps.js        palet Turbo/Plasma/Viridis (GLSL + JS dari koefisien yang sama)
+    quantity.js         besaran yang ditampilkan (laju, umur air, pewarna, salinitas) + skala otomatis
     scene/*.js          ruangan, tank, aquascape, ikan, peralatan, air, siphon, partikel, jejak, label
   ui/                   kontrol + tab, metrik/status, grafik, listrik, studi terpandu
 tests/                  Vitest: regresi hidrolik vs versi 1, solver Poisson, engine CFD
@@ -74,8 +75,9 @@ tests/                  Vitest: regresi hidrolik vs versi 1, solver Poisson, eng
 Panel dibagi menjadi tab **Tank · Arus · Studi · Tampilan · Metrik · Listrik**; tombol cepat dan 6 metrik utama
 (termasuk zona mati tank & filter) selalu terlihat di atas tab. Semua grup tertutup saat halaman dimuat.
 
-Tab **Studi** berisi skenario sekali klik (uji padam, siphon putus, belum pasang pelampung, kapas mampet,
-peta zona mati, arah jet duckbill, aliran di filter). Studi mengatur parameter, tampilan, dan kamera, menampilkan
+Tab **Studi** berisi skenario sekali klik (uji padam, siphon putus, belum pasang pelampung, air baru dari filter
+mengisi tank, umur air & ruang mati, ATO & salinitas lokal, kapas mampet, peta zona mati, arah jet duckbill,
+aliran di filter). Studi mengatur parameter, tampilan, dan kamera, menampilkan
 panduan "yang perlu diperhatikan", dan mengembalikan pengaturan pengguna saat diakhiri — selama studi berjalan,
 pengaturan tersimpan tidak ditimpa (`src/ui/studies.js`).
 
@@ -104,4 +106,20 @@ sehingga data rusak/versi lama tidak membuat aplikasi error.
 - **Kabut kecepatan 3D**: volume rendering (ray marching tekstur 3D 32×20×16) medan laju seluruh tank, dengan sorotan
   arus kuat, zona mati (< 1 cm/s, warna peringatan), atau semua laju. Sinar berhenti di batu/pasir sehingga oklusi benar
   tanpa depth pass; langkah sinar menyesuaikan kualitas grafis. Lihat `src/render/flowfog.js`.
+- **Transport skalar (air baru, umur air, salinitas lokal)**: tiga besaran dibawa oleh medan arus CFD dengan volume
+  hingga konservatif (fluks muka MAC, rekonstruksi TVD van Leer, difusivitas turbulen ν_t/Sc_t + difusi molekuler,
+  sub-langkah CFL) di tank dan filter yang tersambung jadi satu loop tertutup: yang tersedot intake siphon masuk filter,
+  yang dihisap pompa keluar dari duckbill.
+  - *Air baru (pewarna)*: penanda pasif dari duckbill (denyut 20 dtk atau terus-menerus); kekekalan diuji < 1%.
+  - *Umur air*: umur rata-rata lokal sejak keluar duckbill (0 di duckbill, +1 dtk/dtk). Dari sini dihitung waktu tinggal
+    nominal τ = V/Q, efisiensi pertukaran udara/air ACE = τ/(2·⟨umur⟩) (50% = campur sempurna; < 50% = jalan pintas/ruang
+    mati) dan fraksi "air tua" (umur > 2τ). Ini ukuran ruang mati yang lebih tepat daripada laju arus semata.
+  - *Salinitas lokal*: air tawar ATO masuk sebagai sumber 0 ppt di chamber pompa; gaya apung Boussinesq
+    (β_S = 7,6·10⁻⁴ /ppt) membuat air lebih tawar cenderung naik. Karena permukaan dimodelkan sebagai tutup kaku,
+    salinitas rata-rata dikunci ke neraca garam model hidrolik; sebaran lokal tetap dari transport.
+  - Penanda putih skematis lama (lintasan gambar tangan dari duckbill ke intake) dihapus; semua visual aliran di tank
+    dan filter kini berasal dari CFD.
+  - Batasan: isotermal (tanpa stratifikasi suhu), penguapan tidak dimodelkan sebagai aliran (studi ATO menurunkan level
+    chamber pompa secara manual), kisi kasar (1–1,5 cm) sehingga lapisan batas tidak teresolusi, dan pada perangkat lambat
+    waktu CFD bisa tertinggal dari waktu hidrolik.
 - Angka adalah acuan untuk dikalibrasi saat uji air tawar, bukan pengganti uji itu.

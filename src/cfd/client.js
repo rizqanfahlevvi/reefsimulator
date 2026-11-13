@@ -3,6 +3,7 @@
  * menyimpan medan kecepatan terakhir dan menyediakan sampling untuk jejak partikel.
  */
 import { G } from '../physics/constants.js';
+import { totalVolume } from '../physics/hydraulics.js';
 import { T3, F3, cellIndex, trilinear } from './grid.js';
 import { ROCKS, NOZZLE, WAVEMAKER, FILTER, dirOf, siphonX } from '../layout.js';
 
@@ -14,7 +15,7 @@ const norm3 = (a) => {
   return a;
 };
 
-const BUF_KEYS = ['u', 'v', 'w', 'm', 'fu', 'fv', 'fw', 'fm'];
+const BUF_KEYS = ['u', 'v', 'w', 'm', 'fu', 'fv', 'fw', 'fm', 'ta', 'td', 'ts', 'fa', 'fd', 'fs'];
 const makeBuffers = () => ({
   u: new Float32Array(T3.N),
   v: new Float32Array(T3.N),
@@ -24,6 +25,13 @@ const makeBuffers = () => ({
   fv: new Float32Array(F3.N),
   fw: new Float32Array(F3.N),
   fm: new Float32Array(F3.N),
+  // skalar: umur air (dtk), pewarna (0..1), salinitas (ppt) — tank (t*) dan filter (f*)
+  ta: new Float32Array(T3.N),
+  td: new Float32Array(T3.N),
+  ts: new Float32Array(T3.N).fill(35),
+  fa: new Float32Array(F3.N),
+  fd: new Float32Array(F3.N),
+  fs: new Float32Array(F3.N).fill(35),
 });
 
 export class FlowClient {
@@ -44,6 +52,12 @@ export class FlowClient {
     this.ffw = new Float32Array(F3.N);
     this.ffavg = new Float32Array(F3.N);
     this.ffsol = new Uint8Array(F3.N).fill(1);
+    // medan skalar terakhir
+    const b0 = makeBuffers();
+    this.sc = { ta: b0.ta, td: b0.td, ts: b0.ts, fa: b0.fa, fd: b0.fd, fs: b0.fs };
+    /** pewarna "air baru": mode 'off' | 'pulse' | 'cont'; waktu CFD (dtk) */
+    this.dye = { mode: 'off', until: 0, clear: false };
+    this.cfdTime = 0;
     /** Bertambah setiap ada medan baru dari worker (untuk refresh tekstur bidang potong). */
     this.version = 0;
     this.fsol = new Uint8Array(T3.N).fill(1);
@@ -114,7 +128,8 @@ export class FlowClient {
 
   onResult(m) {
     // kembalikan buffer lama sebagai cadangan untuk pesan berikutnya (tanpa alokasi)
-    const old = { u: this.fu, v: this.fv, w: this.fw, m: this.favg, fu: this.ffu, fv: this.ffv, fw: this.ffw, fm: this.ffavg };
+    const old = { u: this.fu, v: this.fv, w: this.fw, m: this.favg, fu: this.ffu, fv: this.ffv, fw: this.ffw, fm: this.ffavg, ...this.sc };
+    this.sc = { ta: m.ta, td: m.td, ts: m.ts, fa: m.fa, fd: m.fd, fs: m.fs };
     this.fu = m.u;
     this.fv = m.v;
     this.fw = m.w;
@@ -131,7 +146,7 @@ export class FlowClient {
     this.busy = false;
     if (this.burst > 0) {
       this.burst--;
-      this.request(0.1);
+      this.request(this.burstDt || 0.1); // diagnostik: langkah beruntun tanpa menunggu frame
     }
   }
 
@@ -223,7 +238,52 @@ export class FlowClient {
     return trilinear(F3, this.ffavg, x, y, z);
   }
 
+  /** Skalar tank: key 'age' | 'dye' | 'salt'. */
+  scalarT(key, x, y, z) {
+    return trilinear(T3, this.sc[key === 'age' ? 'ta' : key === 'dye' ? 'td' : 'ts'], x, y, z);
+  }
+
+  /** Skalar filter: key 'age' | 'dye' | 'salt'. */
+  scalarF(key, x, y, z) {
+    return trilinear(F3, this.sc[key === 'age' ? 'fa' : key === 'dye' ? 'fd' : 'fs'], x, y, z);
+  }
+
+  /* ---------- pewarna "air baru dari filter" ---------- */
+  /** Lepas pewarna di air yang keluar dari duckbill: pulsa (detik waktu CFD) atau terus-menerus. */
+  startDye(mode, seconds = 20) {
+    this.dye.mode = mode;
+    this.dye.until = this.cfdTime + seconds;
+  }
+
+  clearDye() {
+    this.dye.mode = 'off';
+    this.dye.clear = true;
+  }
+
+  /** Status pewarna untuk UI. */
+  dyeStatus() {
+    const d = this.dye;
+    if (d.mode === 'cont') return 'terus-menerus';
+    if (d.mode === 'pulse' && this.cfdTime < d.until) return `pulsa, sisa ${Math.ceil(d.until - this.cfdTime)} dtk`;
+    return 'tidak dilepas';
+  }
+
   /* ---------- pesan ke engine ---------- */
+  /** Kontrol transport skalar: salinitas dari neraca garam hidrolik, pewarna dari duckbill. */
+  scalarMessage(dt) {
+    const { S, P } = this.app;
+    const litres = totalVolume(S, P) / 1000 - P.disp;
+    const salt = S.salt / Math.max(1, litres);
+    this.cfdTime += dt;
+    const d = this.dye;
+    let dyeIn = null; // null = air duckbill membawa pewarna yang kembali dari filter (siklus)
+    if (d.mode === 'cont' || (d.mode === 'pulse' && this.cfdTime <= d.until)) dyeIn = 1;
+    else if (d.mode === 'pulse') d.mode = 'off';
+    const m = { salt0: salt, saltRef: salt, dyeIn, resetDye: d.clear };
+    d.clear = false;
+    return m;
+  }
+
   buildMessage(dt) {
     const { S, P, V, NZL, WM } = this.app;
     const h = T3.h;
@@ -271,8 +331,8 @@ export class FlowClient {
       for (const s of ok) tot += s[3];
       const Qv = Math.min(Q, tot);
       if (ok.length && Qv > 1 && this.cellOf(tip[0], tip[1], tip[2]) >= 0) {
-        vols.push([tip[0], tip[1], tip[2], Qv]);
-        for (const s of ok) vols.push([s[0], s[1], s[2], (-Qv * s[3]) / tot]);
+        vols.push([tip[0], tip[1], tip[2], Qv, 'ret']); // air dari filter lewat duckbill
+        for (const s of ok) vols.push([s[0], s[1], s[2], (-Qv * s[3]) / tot, 'in']); // intake siphon / sisir box
       }
     }
     if (V.wm && P.on) {
@@ -310,7 +370,8 @@ export class FlowClient {
       const Qi = vp * As;
       if (Math.abs(Qi) < 0.5) continue;
       const x = siphonX(P.n, i);
-      fpts.push([x, y0, fz, Qi]);
+      // pancuran pipa Ø ±2 cm → sebar ke 2×2 sel (bukan satu titik)
+      for (const dx of [-0.5, 0.5]) for (const dz of [-0.5, 0.5]) fpts.push([x + dx, y0, fz + dz, Qi / 4, 'sip']);
       qsP += Qi;
       if (Qi > 0) {
         const vi = free ? Math.sqrt(vp * vp + 2 * G * (P.zd - S.H1)) : vp;
@@ -323,30 +384,34 @@ export class FlowClient {
       const falls = Math.min(Hu, Hd) <= crest + 0.25;
       const U = Math.min(60, Math.sqrt((Math.abs(qq) * Math.sqrt(2 * G * Math.max(0.2, Math.abs(Hu - Hd)))) / 10));
       if (qq > 0) {
-        fstrips.push([w.up[0], w.up[1], -qq]);
-        flines.push([w.down, Hd - 0.3, qq]);
+        fstrips.push([w.up[0], w.up[1], -qq, w.tag + 'u']);
+        flines.push([w.down, Hd - 0.3, qq, w.tag + 'd']);
         if (falls) fljets.push([w.down, Hd - 0.3, 0, -U, 0]);
       } else {
-        fstrips.push([w.down - 0.5, w.down + 0.5, qq]);
-        flines.push([w.back, Hu - 0.3, -qq]);
+        fstrips.push([w.down - 0.5, w.down + 0.5, qq, w.tag + 'u']);
+        flines.push([w.back, Hu - 0.3, -qq, w.tag + 'd']);
         if (falls) fljets.push([w.back, Hu - 0.3, 0, -U, 0]);
       }
       return qq;
     };
-    const p23 = weir(q.q23, S.H2, S.H3, 22.5, FILTER.weir2);
-    const p34 = weir(q.q34, S.H3, S.HP, 20, FILTER.weir4);
+    const p23 = weir(q.q23, S.H2, S.H3, 22.5, { ...FILTER.weir2, tag: 'w2' });
+    const p34 = weir(q.q34, S.H3, S.HP, 20, { ...FILTER.weir4, tag: 'w4' });
     const pr = Math.abs(q.r) > 0.3 ? q.r : 0;
     const pa = Math.abs(q.a + q.v) > 0.01 ? q.a + q.v : 0;
-    if (pr) fpts.push([...FILTER.pump.intake, -pr]);
-    if (pa) fpts.push([FILTER.ato[0], S.HP - 0.3, FILTER.ato[2], pa]);
+    if (pr) {
+      // isapan pompa lewat grill depan ±11 cm² → sebar ke 3×3 sel
+      const [ix, iy, iz] = FILTER.pump.intake;
+      for (const dx of [-1, 0, 1]) for (const dy of [-1, 0, 1]) fpts.push([ix + dx, iy + dy, iz, -pr / 9, 'pump']);
+    }
+    if (pa) fpts.push([FILTER.ato[0], S.HP - 0.3, FILTER.ato[2], pa, 'ato']); // air tawar ATO
     // naik-turun muka air tiap chamber = −(masuk − keluar); disusun dari jumlah yang benar-benar
     // dikirim di atas sehingga tiap komponen terhubung (ch1+2, ch3+riser, ch pompa) seimbang tepat
     const st = FILTER.strips;
     fstrips.push(
-      [st.c1[0], st.c1[1], -(qsP - q.q12)],
-      [st.c2[0], st.c2[1], -(q.q12 - p23)],
-      [st.c3[0], st.c3[1], -(p23 - p34)],
-      [st.pump[0], st.pump[1], -(p34 - pr + pa)],
+      [st.c1[0], st.c1[1], -(qsP - q.q12), 'lvl'],
+      [st.c2[0], st.c2[1], -(q.q12 - p23), 'lvl'],
+      [st.c3[0], st.c3[1], -(p23 - p34), 'lvl'],
+      [st.pump[0], st.pump[1], -(p34 - pr + pa), 'lvl'],
     );
 
     const m = {
@@ -361,6 +426,7 @@ export class FlowClient {
       filter: { L: [S.H1, S.H2, S.H3, S.HP], clog: P.clog, jets: fjets, ljets: fljets, pts: fpts, lines: flines, strips: fstrips },
       wantStats: this.wantStats,
       reset: this.resetNext,
+      scal: this.scalarMessage(dt),
     };
     this.wantStats = false;
     this.resetNext = false;
