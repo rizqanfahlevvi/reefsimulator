@@ -68,12 +68,13 @@ src/
     scene/*.js          ruangan, tank, aquascape, ikan, peralatan, air, siphon, partikel, jejak, label
   ui/                   kontrol + tab, metrik/status, grafik, listrik, studi terpandu
   diag.js               log kejadian & error global untuk laporan diagnostik (lokal)
+  analysis/             saran (advisor), profil biota, pustaka, titik seimbang, uji pulsa, laporan Markdown
 tests/                  Vitest: regresi hidrolik vs versi 1, solver Poisson, engine CFD, ketahanan klien
 ```
 
 ## Antarmuka
 
-Panel dibagi menjadi tab **Tank · Arus · Studi · Tampilan · Metrik · Listrik**; tombol cepat dan 6 metrik utama
+Panel dibagi menjadi tab **Tank · Arus · Studi · Analisis · Tampilan · Metrik · Listrik**; tombol cepat dan 6 metrik utama
 (termasuk zona mati tank & filter) selalu terlihat di atas tab. Semua grup tertutup saat halaman dimuat.
 
 Tab **Studi** berisi skenario sekali klik (uji padam, siphon putus, belum pasang pelampung, air baru dari filter
@@ -86,6 +87,30 @@ Kontrol di tab **Arus** tidak pernah dikunci. Bila tampilannya sedang mati (kont
 itu langsung menyalakan tampilan yang dibutuhkan (mis. memilih besaran "Umur air" menyalakan kabut 3D, menggeser tinggi
 bidang potong menyalakan bidang potong tank) dan memberi tahu lewat pesan singkat di tampilan 3D. Saat jejak partikel 3D
 aktif, legenda warnanya tampil di pojok tampilan 3D (merah = arus < 1 cm/s, bukan error).
+
+## Analisis & laporan untuk Claude
+
+Tab **Analisis** (`src/analysis/`, `src/ui/analysis.js`):
+
+- **Profil biota**: ikan saja (FOWLR, bawaan), soft coral, LPS, SPS, atau campuran. Profil menentukan target arus
+  (rata-rata tank, **arus di sekitar batu** = sel air yang menempel di batu, zona mati, arus dasar) dan salinitas.
+- **Saran otomatis** (mesin aturan di browser, tanpa AI/internet, diperbarui ±1 dtk): keamanan (level saat padam,
+  pelampung, siphon-break, pompa kering, ATO), kesetimbangan hidrolik (pelampung memutus pompa, gluk-gluk, surface
+  skimmer, valve dicekik, sirkulasi), filter, arus & pertukaran air (umur air, efisiensi pertukaran, duckbill mengarah
+  ke intake), salinitas. Tiap saran: nilai sekarang vs target, langkah penyetelan, tombol aksi sekali klik bila ada,
+  rujukan [n], dan **tingkat bukti** A (riset peer-reviewed) / B (rumus teknik & model) / C (konsensus praktisi —
+  ditandai, tidak disamarkan sebagai riset). Lencana di tab = jumlah temuan kritis + perlu perhatian.
+- **Cari titik seimbang**: model hidrolik dijalankan di latar (dicicil per frame) untuk bukaan valve U-pipe 5–100%
+  sampai tunak; dipilih bukaan paling tertutup yang stabil (siphon penuh, pelampung tidak memutus pompa, level ≤ 28,3 cm)
+  **dan** tetap stabil bila debit pompa naik 20%. Bila siphon tidak sanggup sama sekali, dicari daya pompa maksimum.
+- **Uji pulsa standar** (tracer, Danckwerts 1953): pulsa pewarna 20 dtk setelah arus berkembang; menghasilkan t95
+  (tank homogen 95%, CoV ≤ 5%), waktu tiba & puncak di intake, rasio puncak terhadap campur sempurna (jalan pintas),
+  dibandingkan dengan waktu tinggal τ.
+- **Laporan untuk Claude Project**: Markdown lengkap (konfigurasi, hidrolik, arus CFD, pertukaran air, salinitas lokal,
+  uji pulsa + kurva, titik seimbang, semua saran + rujukan, listrik, batasan model, pustaka, permintaan analisis) +
+  lampiran JSON. Unduh `.md`, salin, atau bagikan (file) — plus **instruksi Project** siap tempel.
+- **Pustaka**: 20 referensi; bibliografi & DOI dicek pada November 2026, referensi yang DOI-nya tidak bisa dipastikan
+  dicantumkan tanpa DOI (`src/analysis/references.js`).
 
 ## Laporan masalah (diagnostik)
 

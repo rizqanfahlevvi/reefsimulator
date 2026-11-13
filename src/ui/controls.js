@@ -539,6 +539,7 @@ export function buildControls(h) {
       ],
     },
     { id: 'studi', title: 'Studi', content: [] },
+    { id: 'analisis', title: 'Analisis', content: [] },
     {
       id: 'tampilan',
       title: 'Tampilan',
@@ -591,6 +592,7 @@ export function buildControls(h) {
       tabBtns[k].setAttribute('aria-selected', String(k === id));
       tabBtns[k].classList.toggle('active', k === id);
     }
+    h.onTab?.(id);
   }
   showTab('tank');
 
@@ -610,5 +612,21 @@ export function buildControls(h) {
   }
   const currentTab = () => Object.keys(sections).find((k) => !sections[k].hidden) || '-';
 
-  return { syncUI, applyView, markSaved, U, showTab, reveal, currentTab, setDyeStatus, studiesRoot: sections.studi };
+  /** Lencana jumlah di tombol tab (mis. saran yang perlu perhatian). */
+  function setTabBadge(id, n, level = '') {
+    const b = tabBtns[id];
+    if (!b) return;
+    const t = n ? String(n) : '';
+    if (b.dataset.badge !== t) b.dataset.badge = t;
+    if (b.dataset.level !== level) b.dataset.level = level;
+  }
+  /** Tampilkan besaran tertentu (mis. pewarna saat uji pulsa) + nyalakan tampilan yang dibutuhkan. */
+  function showQuantity(v) {
+    app.FV.value = v;
+    syncUI();
+    fitFogMode();
+    ensureAnyViz();
+  }
+
+  return { syncUI, applyView, markSaved, U, showTab, reveal, currentTab, setDyeStatus, setTabBadge, showQuantity, sections, studiesRoot: sections.studi };
 }

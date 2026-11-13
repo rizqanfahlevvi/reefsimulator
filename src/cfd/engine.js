@@ -55,6 +55,34 @@ export function createFlowEngine(post) {
   }
 
   let lastCoupling = { qRet: 0, tankOut: null, pumpIn: null };
+  /* sel air yang menempel di batu (tempat karang biasanya diletakkan); dihitung ulang bila geometri berubah */
+  let nearRock = new Int32Array(0);
+  let nearRockVer = -1;
+  function rockCells() {
+    if (nearRockVer === tank.maskVer) return nearRock;
+    nearRockVer = tank.maskVer;
+    const { SY, SZ, nx, ny, nz } = tank.G;
+    const out = [];
+    if (cfg.rock) {
+      for (const c of tank.fluidCells) {
+        for (const n of [c - 1, c + 1, c - SY, c + SY, c - SZ, c + SZ]) {
+          const i = tank.ci[n];
+          const j = tank.cj[n];
+          const k = tank.ck[n];
+          if (i < 1 || i > nx || j < 1 || j > ny || k < 1 || k > nz || !tank.sol[n]) continue; // dinding / air
+          const x = tank.xc(i);
+          const y = tank.yc(j);
+          const z = tank.zc(k);
+          if (y < 1.6) continue; // pasir
+          if (cfg.box && x > 1 && x < 9 && z < 6.5 && y > 16) continue; // overflow box
+          out.push(c);
+          break;
+        }
+      }
+    }
+    nearRock = Int32Array.from(out);
+    return nearRock;
+  }
   let sentT = -1;
   let sentF = -1;
   function handle(m) {
@@ -230,6 +258,16 @@ export function createFlowEngine(post) {
         saltFmin: fS.saltMin,
         saltFmax: fS.saltMax,
         ageF: fS.age,
+        // uji pulsa: sebaran pewarna di tank, kadar di intake, volume tiap bagian
+        dyeTsd: tS.dyeSd,
+        dyeOut: tankOut ? tankOut.dye : 0,
+        volT: tS.volume,
+        volF: fS.volume,
+        // arus di sel air yang menempel di batu (zona karang)
+        ...(() => {
+          const r = tank.statsOf(rockCells());
+          return { rockMean: r.mean, rockDead: r.dead, rockCells: r.cells };
+        })(),
         subT: tank.lastSubsteps,
         subF: filt.lastSubsteps,
       };

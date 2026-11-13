@@ -49,6 +49,8 @@ export const app = {
   glassTint: 0.5,
   /** Kualitas grafis: 'a' otomatis, '0' tinggi, '2' sedang, '3' hemat. */
   quality: 'a',
+  /** Profil biota untuk saran analisis: fowlr | soft | lps | sps | mixed. */
+  profile: 'fowlr',
   /** Statistik arus dari worker. */
   flowStats: { dead: 0, weak: 0, mean: 0, bottom: 0 },
 };

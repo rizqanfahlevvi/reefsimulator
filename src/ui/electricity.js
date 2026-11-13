@@ -23,6 +23,24 @@ const TARIF = [
   [1699.53, '≥3.500 VA · Rp 1.699,53'],
 ];
 
+/** Konsumsi & biaya listrik (fungsi murni; dipakai panel dan laporan analisis). */
+export function energyStats(a = app, E = EL) {
+  const { P, V, LOOK } = a;
+  let wh = 0;
+  const rows = E.rows.map((r) => {
+    let w = r.w;
+    const off =
+      (r.id === 'wm' && !V.wm) || (r.id === 'air' && LOOK.skim !== 'air') || (r.id === 'skp' && LOOK.skim !== 'ven') || (r.id === 'led' && LOOK.lamp === 'off');
+    if (r.id === 'pump') w *= Math.pow(P.spd, 3);
+    if (r.id === 'led') w *= LOOK.li / 80;
+    if (off) w = 0;
+    wh += w * r.h;
+    return { id: r.id, n: r.n, w, h: r.h, off, kwhMonth: (w * r.h * 30) / 1000 };
+  });
+  const kwhMonth = (wh * 30) / 1000;
+  return { rows, avgW: wh / 24, kwhMonth, costMonth: kwhMonth * E.tarif, costYear: (kwhMonth * E.tarif * 365) / 30, tarif: E.tarif };
+}
+
 export function buildElectricity() {
   const root = $('elec');
   root.append(el('h2', { textContent: 'Estimasi listrik' }));
@@ -97,24 +115,16 @@ export function buildElectricity() {
   );
 
   function update() {
-    const { P, V, LOOK } = app;
-    let wh = 0;
-    for (const r of EL.rows) {
-      let w = r.w;
-      const off =
-        (r.id === 'wm' && !V.wm) || (r.id === 'air' && LOOK.skim !== 'air') || (r.id === 'skp' && LOOK.skim !== 'ven') || (r.id === 'led' && LOOK.lamp === 'off');
-      if (r.id === 'pump') w *= Math.pow(P.spd, 3);
-      if (r.id === 'led') w *= LOOK.li / 80;
-      if (off) w = 0;
-      wh += w * r.h;
-      const t = off ? 'mati' : fmt((w * r.h * 30) / 1000, 2);
+    const e = energyStats();
+    EL.rows.forEach((r, i) => {
+      const x = e.rows[i];
+      const t = x.off ? 'mati' : fmt(x.kwhMonth, 2);
       if (r.out.textContent !== t) r.out.textContent = t;
-    }
-    const k = (wh * 30) / 1000;
-    out.eW.textContent = fmt(wh / 24, 1) + ' W';
-    out.eK.textContent = fmt(k, 1) + ' kWh';
-    out.eM.textContent = rupiah(k * EL.tarif);
-    out.eY.textContent = rupiah((k * EL.tarif * 365) / 30);
+    });
+    out.eW.textContent = fmt(e.avgW, 1) + ' W';
+    out.eK.textContent = fmt(e.kwhMonth, 1) + ' kWh';
+    out.eM.textContent = rupiah(e.costMonth);
+    out.eY.textContent = rupiah(e.costYear);
   }
   return { update };
 }

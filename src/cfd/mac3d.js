@@ -599,6 +599,7 @@ export class Mac3D {
     const { age, dye, salt } = this.sc;
     let sa = 0;
     let sd = 0;
+    let sd2 = 0;
     let ss = 0;
     let smin = Infinity;
     let smax = -Infinity;
@@ -606,13 +607,17 @@ export class Mac3D {
       const c = fluid[m];
       sa += age[c];
       sd += dye[c];
+      sd2 += dye[c] * dye[c];
       ss += salt[c];
       if (salt[c] < smin) smin = salt[c];
       if (salt[c] > smax) smax = salt[c];
     }
     const n = Math.max(1, fluid.length);
     const h = this.G.h;
-    return { volume: fluid.length * h * h * h, age: sa / n, dye: sd / n, salt: ss / n, saltMin: smin, saltMax: smax };
+    const dm = sd / n;
+    // simpangan baku pewarna antar-sel (volume sel seragam) → koefisien variasi untuk waktu pencampuran
+    const dyeSd = Math.sqrt(Math.max(0, sd2 / n - dm * dm));
+    return { volume: fluid.length * h * h * h, age: sa / n, dye: dm, dyeSd, salt: ss / n, saltMin: smin, saltMax: smax };
   }
 
   /** Tulis kecepatan pusat sel + laju rata-rata ke buffer keluaran. */
@@ -656,6 +661,19 @@ export class Mac3D {
     }
     n = Math.max(1, n);
     return { dead: (dead / n) * 100, weak: (weak / n) * 100, mean: sum / n, bottom: nb ? sb / nb : 0 };
+  }
+
+  /** Statistik laju rata-rata pada sekumpulan sel (mis. sel air yang menempel di batu). */
+  statsOf(cells) {
+    let dead = 0;
+    let sum = 0;
+    for (let m = 0; m < cells.length; m++) {
+      const a = this.avg[cells[m]];
+      sum += a;
+      if (a < 1) dead++;
+    }
+    const n = Math.max(1, cells.length);
+    return { mean: sum / n, dead: (dead / n) * 100, cells: cells.length };
   }
 
   /** Divergensi maksimum (1/s) dikurangi sumber — untuk uji. */

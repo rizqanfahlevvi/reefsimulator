@@ -87,6 +87,7 @@ export const SPEC = {
     SPD: num(1, 20),
     volS: num(28, 44),
     quality: oneOf('a', '0', '2', '3'),
+    profile: oneOf('fowlr', 'soft', 'lps', 'sps', 'mixed'),
   },
 };
 

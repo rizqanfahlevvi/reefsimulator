@@ -83,6 +83,14 @@ export class FlowClient {
     this.sentAt = 0;
     this.lastTick = 0;
     this.errRun = 0;
+    /** Berapa kali medan arus diulang dari awal, dan waktu CFD saat terakhir diulang. */
+    this.resetCount = 0;
+    this.resetAt = 0;
+  }
+
+  /** Waktu CFD (dtk) sejak medan arus terakhir diulang — statistik arus baru mewakili setelah ±60 dtk. */
+  get cfdAge() {
+    return this.cfdTime - this.resetAt;
   }
 
   /** Catat kejadian ke diagnostik (bila disediakan). */
@@ -535,6 +543,10 @@ export class FlowClient {
       scal: this.scalarMessage(dt),
     };
     this.wantStats = false;
+    if (this.resetNext) {
+      this.resetCount++;
+      this.resetAt = this.cfdTime - dt; // scalarMessage() sudah memajukan cfdTime
+    }
     this.resetNext = false;
     return m;
   }

@@ -12,6 +12,7 @@ import { loadSettings, saveSettings, clearSettings, applySettings, snapshot, san
 import { buildStudies } from './ui/studies.js';
 import { drawCharts } from './ui/charts.js';
 import { buildDiagnostics } from './ui/diagnostics.js';
+import { buildAnalysis } from './ui/analysis.js';
 import { toast } from './ui/toast.js';
 import { diag, logEvent, errorText, installGlobalHandlers } from './diag.js';
 import { $ } from './util/format.js';
@@ -80,6 +81,8 @@ const hooks = {
     logEvent('auto', msg);
   },
   diagBox: null,
+  /** Tab dibuka: isi tab Analisis langsung digambar (tidak menunggu siklus 1 dtk). */
+  onTab: (id) => id === 'analisis' && analysisUI?.refresh(true),
   resetSettings: () => {
     saveEnabled = false;
     clearTimeout(saveTimer);
@@ -118,6 +121,20 @@ for (const id of ['panel', 'vbtn']) {
   });
 }
 logEvent('info', `Halaman dimuat · CFD ${flow.mode} · 3D ${world ? 'ok' : 'gagal'}`);
+
+/* tab Analisis: saran otomatis, titik seimbang, uji pulsa, laporan untuk Claude */
+const analysisUI = buildAnalysis(ui.sections.analisis, {
+  flow,
+  applied: () => {
+    ui.syncUI();
+    ui.applyView();
+    world?.rebuildSiphon();
+    scheduleSave();
+  },
+  notify: hooks.notify,
+  setBadge: (n, level) => ui.setTabBadge('analisis', n, level),
+  showDye: () => ui.showQuantity('dye'),
+});
 
 // perubahan slider siphon dibangun ulang dengan jeda (debounce) ±90 ms
 let siphonDirty = false;
@@ -185,6 +202,7 @@ function refreshAll() {
   ui.syncUI();
   elec.update();
   metrics.update();
+  analysisUI.syncProfile();
 }
 function restoreSnap(snap) {
   const s = sanitize(snap, EL.rows.map((r) => r.id));
@@ -292,10 +310,12 @@ function frame(now) {
   const wall = Math.min(1, raw);
   uiAcc += wall;
   if (uiAcc > 0.2) {
+    const uiDt = uiAcc;
     uiAcc = 0;
     guarded('Metrik', () => metrics.update());
     ui.setDyeStatus(flow.dyeStatus());
     diagUI.update();
+    guarded('Analisis', () => analysisUI.update(uiDt));
     if (elecTick++ % 5 === 0) elec.update();
   }
   chAcc += wall;
@@ -342,6 +362,10 @@ window.__sim = {
   setView: (k) => world?.setView(k),
   diag,
   report: () => diagUI.report(),
+  analysisReport: () => analysisUI.report(),
+  get analysis() {
+    return analysisUI;
+  },
   /** majukan animasi garis arus n langkah (diagnostik) */
   flowAdvance: (n, dt) => world?.fviz.debugAdvance(n, dt),
 };
