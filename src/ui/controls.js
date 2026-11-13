@@ -216,6 +216,7 @@ export function buildControls(h) {
   }).value = app.FV.fogMode;
   selectRow(gs[3], 'Besaran yang ditampilkan', 'fvValue', QUANTITY_OPTIONS, (v) => {
     app.FV.value = v;
+    fitFogMode();
     ensureAnyViz();
   }).value = app.FV.value;
 
@@ -225,7 +226,8 @@ export function buildControls(h) {
     el('p', {
       className: 'note',
       textContent:
-        'Tandai air yang keluar dari duckbill, lalu lihat bagaimana air itu menyebar di tank, tersedot intake, melewati filter, dan kembali. Besaran "Air baru dari filter (%)" dan kabut 3D dinyalakan otomatis bila belum ada tampilan arus.',
+        'Tandai air yang keluar dari duckbill, lalu lihat bagaimana air itu menyebar di tank, tersedot intake, melewati filter, dan kembali. Besaran "Air baru dari filter (%)" dan kabut 3D dinyalakan otomatis bila belum ada tampilan arus. ' +
+        'Pulsa 20 dtk = ±1,8 L air bertanda; setelah tercampur ke ±37 L kadarnya tinggal ±5%, jadi skala warna menyesuaikan otomatis (lihat angka di legenda). Untuk melihat tank "terisi" air baru sampai penuh, pakai pewarna terus-menerus.',
     }),
   ]);
   {
@@ -238,6 +240,7 @@ export function buildControls(h) {
           app.FV.value = 'dye';
           syncUI();
         }
+        fitFogMode();
         ensureAnyViz(); // pewarna tidak terlihat tanpa kabut/bidang potong
       });
       b.append(e);
@@ -378,6 +381,20 @@ export function buildControls(h) {
     applyView();
     syncUI();
     h.notify?.(turned.join(' + ') + ' dinyalakan otomatis');
+  }
+  /** Mode sorot kabut yang menyembunyikan besaran terpilih (mis. "zona mati" atau "nilai rendah" untuk pewarna) diganti. */
+  function fitFogMode() {
+    const v = app.FV.value;
+    const m = app.FV.fogMode;
+    let want = m;
+    if (v === 'dye' && (m === 'dead' || m === 'low')) want = 'fast';
+    else if (v === 'age' && m === 'dead') want = 'fast';
+    else if (v === 'salt' && m === 'dead') want = 'low';
+    if (want === m) return;
+    app.FV.fogMode = want;
+    syncUI();
+    const label = $('fvFogMode').selectedOptions[0]?.textContent || want;
+    h.notify?.(`Sorot kabut diganti ke "${label}" supaya besaran ini terlihat`);
   }
   /** Besaran skalar (umur/pewarna/salinitas) paling jelas di kabut 3D; laju arus di bidang potong. */
   function ensureAnyViz() {

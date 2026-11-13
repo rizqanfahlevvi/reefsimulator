@@ -95,3 +95,21 @@ describe('log diagnostik', () => {
     expect(errorText(null)).toBe('tidak diketahui');
   });
 });
+
+describe('skala warna pewarna', () => {
+  it('mengikuti kadar tertinggi (minimal 10%), bukan dikunci 0–100%', async () => {
+    const { RangeTracker, legendTicks } = await import('../src/render/quantity.js');
+    const r = new RangeTracker();
+    // pulsa sudah tercampur: p98 ±6% → skala 0–10%
+    r.update('dye', [{ p02: 0, p95: 5, p98: 6 }], 0, 1, true);
+    expect(r.max).toBeCloseTo(10, 5);
+    // awan pekat di awal pulsa: p98 40% → skala 46%
+    r.update('dye', [{ p02: 0, p95: 30, p98: 40 }], 0, 1, true);
+    expect(r.max).toBeCloseTo(46, 5);
+    // pewarna terus-menerus: tidak melebihi 100%
+    r.update('dye', [{ p02: 80, p95: 98, p98: 100 }], 0, 1, true);
+    expect(r.max).toBe(100);
+    expect(legendTicks('dye', 0, 100).map((t) => t.text)).toEqual(['0%', '50%', '100%']);
+    expect(legendTicks('dye', 0, 12).map((t) => t.text)).toEqual(['0%', '6,0%', '12%']);
+  });
+});

@@ -363,12 +363,15 @@ export class FlowClient {
     this.dye.clear = true;
   }
 
-  /** Status pewarna untuk UI. */
+  /** Status pewarna untuk UI (+ kadar rata-rata di tank & filter supaya pergerakannya terbaca). */
   dyeStatus() {
     const d = this.dye;
-    if (d.mode === 'cont') return 'terus-menerus';
-    if (d.mode === 'pulse' && this.cfdTime < d.until) return `pulsa, sisa ${Math.ceil(d.until - this.cfdTime)} dtk`;
-    return 'tidak dilepas';
+    const fs = this.app.flowStats || {};
+    const pct = (v) => (v < 0.1 ? (v * 100).toFixed(1).replace('.', ',') : Math.round(v * 100)) + '%';
+    const amount = fs.dyeT > 0.0005 || fs.dyeF > 0.0005 ? ` · rata-rata tank ${pct(fs.dyeT)} · filter ${pct(fs.dyeF)}` : '';
+    if (d.mode === 'cont') return 'terus-menerus' + amount;
+    if (d.mode === 'pulse' && this.cfdTime < d.until) return `pulsa, sisa ${Math.ceil(d.until - this.cfdTime)} dtk` + amount;
+    return (amount ? 'sudah dilepas' : 'tidak dilepas') + amount;
   }
 
   /* ---------- pesan ke engine ---------- */

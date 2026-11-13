@@ -129,6 +129,8 @@ sehingga data rusak/versi lama tidak membuat aplikasi error.
   sub-langkah CFL) di tank dan filter yang tersambung jadi satu loop tertutup: yang tersedot intake siphon masuk filter,
   yang dihisap pompa keluar dari duckbill.
   - *Air baru (pewarna)*: penanda pasif dari duckbill (denyut 20 dtk atau terus-menerus); kekekalan diuji < 1%.
+    Skala warnanya otomatis (batas atas = persentil 98, minimal 10%): pulsa 20 dtk hanya ±1,8 L air bertanda yang
+    setelah tercampur tinggal ±5%, sehingga dengan skala tetap 0–100% awannya tampak tidak bergerak/hilang.
   - *Umur air*: umur rata-rata lokal sejak keluar duckbill (0 di duckbill, +1 dtk/dtk). Dari sini dihitung waktu tinggal
     nominal τ = V/Q, efisiensi pertukaran udara/air ACE = τ/(2·⟨umur⟩) (50% = campur sempurna; < 50% = jalan pintas/ruang
     mati) dan fraksi "air tua" (umur > 2τ). Ini ukuran ruang mati yang lebih tepat daripada laju arus semata.

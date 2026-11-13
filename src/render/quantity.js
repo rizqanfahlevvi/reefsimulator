@@ -75,7 +75,9 @@ export class RangeTracker {
     } else if (q === 'age') {
       hi = st.length ? Math.max(1, Math.max(...st.map((s) => s.p95)) * 1.1) : this.max;
     } else if (q === 'dye') {
-      hi = 100;
+      // skala otomatis: pulsa 20 dtk (±1,8 L) yang sudah tercampur ke ±37 L tinggal beberapa persen —
+      // dengan skala tetap 0–100% awannya tampak "hilang". Batas atas mengikuti p98 (minimal 10%).
+      hi = st.length ? Math.min(100, Math.max(10, Math.max(...st.map((s) => s.p98)) * 1.15)) : this.max;
     } else {
       // salinitas: rentang p2–p98, minimal 0,05 ppt supaya noise numerik tidak dibesar-besarkan
       if (!st.length) return this;
@@ -104,7 +106,10 @@ export function legendTicks(q, min, max) {
     vals.push({ v: m, text: fmtNum(m, m % 1 ? 1 : 0) + '+' });
     return vals;
   }
-  if (q === 'dye') return [0, 50, 100].map((v) => ({ v, text: v + '%' }));
+  if (q === 'dye') {
+    const pct = (v) => (v >= 99.5 ? '100' : fmtNum(v, v > 0 && v < 10 ? 1 : 0)) + '%';
+    return [0, max / 2, max].map((v) => ({ v, text: pct(v) }));
+  }
   if (q === 'salt') {
     const mid = 0.5 * (min + max);
     return [min, mid, max].map((v) => ({ v, text: fmtNum(v, 2) }));
