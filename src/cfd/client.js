@@ -34,6 +34,12 @@ const makeBuffers = () => ({
   fs: new Float32Array(F3.N).fill(35),
 });
 
+/** Cek cepat (setiap elemen ke-3) bahwa medan bebas NaN/Infinity — NaN menyebar ke seluruh medan dalam 1–2 langkah. */
+function allFinite(a) {
+  for (let i = 0; i < a.length; i += 3) if (!Number.isFinite(a[i])) return false;
+  return true;
+}
+
 export class FlowClient {
   /**
    * @param {object} app state aplikasi
@@ -70,39 +76,107 @@ export class FlowClient {
     this.wantStats = false;
     this.send = null;
     this.mode = 'worker';
+    this.worker = null;
+    /** Kinerja untuk laporan diagnostik. */
+    this.perf = { ms: 0, ratio: 1, resets: 0, errors: 0, restarts: 0 };
+    this.win = { sim: 0, cfd: 0, t: 0 };
+    this.sentAt = 0;
+    this.lastTick = 0;
+    this.errRun = 0;
+  }
+
+  /** Catat kejadian ke diagnostik (bila disediakan). */
+  log(kind, msg) {
+    this.hooks.onEvent?.(kind, msg);
   }
 
   start() {
-    const useMain = async () => {
-      this.mode = 'main';
-      const { createFlowEngine } = await import('./engine.js');
-      const eng = createFlowEngine((m) => this.onResult(m));
-      eng({ t: 'init', rocks: ROCKS });
-      this.send = (m) => setTimeout(() => eng(m), 0);
-      this.spare = makeBuffers();
-      this.busy = false;
-      this.resetNext = true;
-    };
     try {
-      const wk = new Worker(new URL('./flow.worker.js', import.meta.url), { type: 'module' });
-      wk.onmessage = (e) => this.onResult(e.data);
-      wk.onerror = (e) => {
-        console.warn('Worker arus gagal, pindah ke main thread', e.message);
-        if (this.mode === 'worker') useMain();
-      };
-      this.send = (m, t) => wk.postMessage(m, t);
-      wk.postMessage({ t: 'init', rocks: ROCKS });
-      this.worker = wk;
+      this.spawnWorker();
     } catch (err) {
-      console.warn('Worker tidak tersedia, arus dihitung di main thread', err);
-      useMain();
+      this.log('warn', 'Worker tidak tersedia, arus dihitung di thread utama: ' + (err?.message || err));
+      this.useMain();
     }
+  }
+
+  spawnWorker() {
+    const wk = new Worker(new URL('./flow.worker.js', import.meta.url), { type: 'module' });
+    wk.onmessage = (e) => this.onResult(e.data);
+    wk.onerror = (e) => {
+      // kegagalan memuat worker (error di dalam langkah ditangkap worker sendiri, lihat flow.worker.js)
+      this.log('error', 'Worker arus gagal: ' + (e.message || 'tidak diketahui') + ' → pindah ke thread utama');
+      if (this.worker === wk) this.useMain();
+    };
+    this.mode = 'worker';
+    this.worker = wk;
+    this.send = (m, t) => wk.postMessage(m, t);
+    wk.postMessage({ t: 'init', rocks: ROCKS });
+  }
+
+  async useMain() {
+    this.mode = 'main';
+    this.worker?.terminate();
+    this.worker = null;
+    this.send = null; // tahan permintaan sampai engine siap
+    const { createFlowEngine } = await import('./engine.js');
+    const eng = createFlowEngine((m) => this.onResult(m));
+    eng({ t: 'init', rocks: ROCKS });
+    this.send = (m) =>
+      setTimeout(() => {
+        try {
+          eng(m);
+        } catch (err) {
+          this.onResult({ t: 'error', message: err?.message || String(err) });
+        }
+      }, 0);
+    this.recover();
+  }
+
+  /** Buang permintaan yang hilang: buffer baru, siap kirim, medan diulang dari awal. */
+  recover() {
+    this.spare = makeBuffers();
+    this.busy = false;
+    this.sentAt = 0;
+    this.resetNext = true;
+  }
+
+  /** Worker tidak menjawab: hentikan dan mulai worker baru. */
+  restart(reason) {
+    this.perf.restarts++;
+    this.log('error', reason + ' → worker arus dimulai ulang');
+    if (this.mode === 'worker') {
+      this.worker?.terminate();
+      try {
+        this.spawnWorker();
+      } catch {
+        this.useMain();
+        return;
+      }
+    }
+    this.recover();
   }
 
   /** Dipanggil tiap frame dari loop utama. */
   tick(real, simdt) {
     const { app } = this;
-    if (!app.V.cfd || app.paused) return;
+    const now = performance.now();
+    if (!app.V.cfd || app.paused) {
+      this.lastTick = now;
+      return;
+    }
+    // penjaga: worker tidak menjawab > 10 dtk (jeda karena tab/HP tidur tidak dihitung)
+    if (this.busy && this.sentAt && this.mode === 'worker') {
+      if (this.lastTick && now - this.lastTick > 1000) this.sentAt += now - this.lastTick;
+      if (now - this.sentAt > 10000) this.restart('CFD tidak merespons 10 dtk');
+    }
+    this.lastTick = now;
+    // seberapa jauh waktu CFD mengikuti waktu simulasi hidrolik (jendela ±3 dtk)
+    this.win.sim += simdt;
+    this.win.t += real;
+    if (this.win.t > 3) {
+      this.perf.ratio = this.win.sim > 0.05 ? Math.min(1, this.win.cfd / this.win.sim) : 1;
+      this.win = { sim: 0, cfd: 0, t: 0 };
+    }
     this.pend = Math.min(0.12, this.pend + simdt);
     this.acc += real;
     if (this.acc > 0.45) {
@@ -123,10 +197,39 @@ export class FlowClient {
     for (const k of BUF_KEYS) m['b' + k] = s[k];
     this.spare = null;
     this.busy = true;
+    this.sentAt = performance.now();
+    this.win.cfd += dt;
     this.send(m, this.mode === 'worker' ? BUF_KEYS.map((k) => s[k].buffer) : undefined);
   }
 
   onResult(m) {
+    if (m.t === 'error') {
+      // langkah gagal di engine: buffer yang dikirim hilang → pulihkan, ulang medan
+      this.perf.errors++;
+      this.log('error', 'CFD: ' + m.message + (m.where ? ' (' + m.where + ')' : ''));
+      this.recover();
+      if (++this.errRun >= 5) {
+        this.app.V.cfd = false;
+        this.errRun = 0;
+        this.log('error', 'CFD dimatikan otomatis setelah 5 error berturut-turut');
+        this.hooks.onCfdOff?.();
+      }
+      return;
+    }
+    this.errRun = 0;
+    if (this.sentAt) {
+      const ms = performance.now() - this.sentAt;
+      this.perf.ms = this.perf.ms ? this.perf.ms * 0.9 + ms * 0.1 : ms;
+    }
+    // penjaga NaN: medan rusak (mis. perangkat/float aneh) → nolkan dan ulang otomatis
+    if (!allFinite(m.u) || !allFinite(m.fu) || !allFinite(m.ta) || !allFinite(m.ts) || !allFinite(m.fa) || !allFinite(m.fs)) {
+      this.perf.resets++;
+      this.log('error', 'Medan arus tidak stabil (NaN) → diulang otomatis');
+      for (const k of ['u', 'v', 'w', 'm', 'fu', 'fv', 'fw', 'fm', 'ta', 'td', 'fa', 'fd']) m[k].fill(0);
+      m.ts.fill(35);
+      m.fs.fill(35);
+      this.resetNext = true;
+    }
     // kembalikan buffer lama sebagai cadangan untuk pesan berikutnya (tanpa alokasi)
     const old = { u: this.fu, v: this.fv, w: this.fw, m: this.favg, fu: this.ffu, fv: this.ffv, fw: this.ffw, fm: this.ffavg, ...this.sc };
     this.sc = { ta: m.ta, td: m.td, ts: m.ts, fa: m.fa, fd: m.fd, fs: m.fs };

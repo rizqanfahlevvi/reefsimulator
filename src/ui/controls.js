@@ -52,18 +52,19 @@ export function buildControls(h) {
     { g: 4, id: 'clog', label: 'Kapas kotor', min: 0, max: 95, step: 1, d: 0, unit: '%', get: () => P().clog * 100, set: (v) => (P().clog = v / 100) },
     { g: 3, id: 'nyaw', label: 'Arah duckbill mendatar (0° lurus ke kiri, + ke depan)', min: -90, max: 90, step: 5, d: 0, unit: '°', get: () => app.NZL.yaw, set: (v) => (app.NZL.yaw = v) },
     { g: 3, id: 'npit', label: 'Arah duckbill naik/turun (+ ke atas)', min: -60, max: 45, step: 5, d: 0, unit: '°', get: () => app.NZL.pitch, set: (v) => (app.NZL.pitch = v) },
-    { g: 3, id: 'sliceY', label: 'Tinggi bidang potong mendatar', min: 1, max: 28, step: 0.5, d: 1, unit: ' cm', get: () => app.sliceY, set: (v) => (app.sliceY = v) },
-    { g: 3, id: 'filterZ', label: 'Posisi bidang filter (dari kaca belakang filter)', min: 0.5, max: 9.5, step: 0.5, d: 1, unit: ' cm', get: () => app.FV.filterZ, set: (v) => (app.FV.filterZ = v) },
-    { g: 3, id: 'sliceZ', label: 'Posisi bidang tegak (dari kaca belakang)', min: 1, max: 24, step: 0.5, d: 1, unit: ' cm', get: () => app.FV.sliceZ, set: (v) => (app.FV.sliceZ = v) },
+    { g: 3, id: 'sliceY', label: 'Tinggi bidang potong mendatar', min: 1, max: 28, step: 0.5, d: 1, unit: ' cm', get: () => app.sliceY, set: (v) => (app.sliceY = v), auto: () => planeAt('h') },
+    { g: 3, id: 'filterZ', label: 'Posisi bidang filter (dari kaca belakang filter)', min: 0.5, max: 9.5, step: 0.5, d: 1, unit: ' cm', get: () => app.FV.filterZ, set: (v) => (app.FV.filterZ = v), auto: () => ensureViz('filterPlane') },
+    { g: 3, id: 'sliceZ', label: 'Posisi bidang tegak (dari kaca belakang)', min: 1, max: 24, step: 0.5, d: 1, unit: ' cm', get: () => app.FV.sliceZ, set: (v) => (app.FV.sliceZ = v), auto: () => planeAt('v') },
     {
       g: 3, id: 'vmax', label: 'Batas atas skala warna', min: 0, max: 30, step: 1, d: 0, unit: ' cm/s',
       show: (v) => (v === 0 ? 'otomatis' : fmt(v, 0) + ' cm/s'),
       get: () => app.FV.vmax,
       set: (v) => (app.FV.vmax = v),
+      auto: () => ensureAnyViz(),
     },
-    { g: 3, id: 'mapAlpha', label: 'Kepekatan peta warna', min: 0, max: 100, step: 5, d: 0, unit: '%', get: () => app.FV.mapAlpha * 100, set: (v) => (app.FV.mapAlpha = v / 100) },
-    { g: 3, id: 'fogDensity', label: 'Kepekatan kabut', min: 0.1, max: 3, step: 0.1, d: 1, unit: '×', get: () => app.FV.fogDensity, set: (v) => (app.FV.fogDensity = v) },
-    { g: 3, id: 'anim', label: 'Kecepatan animasi garis arus', min: 0.5, max: 5, step: 0.5, d: 1, unit: '×', get: () => app.FV.anim, set: (v) => (app.FV.anim = v) },
+    { g: 3, id: 'mapAlpha', label: 'Kepekatan peta warna', min: 0, max: 100, step: 5, d: 0, unit: '%', get: () => app.FV.mapAlpha * 100, set: (v) => (app.FV.mapAlpha = v / 100), auto: () => ensurePlane() },
+    { g: 3, id: 'fogDensity', label: 'Kepekatan kabut', min: 0.1, max: 3, step: 0.1, d: 1, unit: '×', get: () => app.FV.fogDensity, set: (v) => (app.FV.fogDensity = v), auto: () => ensureViz('fog') },
+    { g: 3, id: 'anim', label: 'Kecepatan animasi garis arus', min: 0.5, max: 5, step: 0.5, d: 1, unit: '×', get: () => app.FV.anim, set: (v) => (app.FV.anim = v), auto: () => ensurePlane() },
     { g: 3, id: 'wq', label: 'Debit wavemaker', min: 300, max: 3000, step: 100, d: 0, unit: ' L/jam', get: () => app.WM.q, set: (v) => (app.WM.q = v) },
     { g: 3, id: 'wyaw', label: 'Wavemaker mendatar (+ ke depan)', min: -80, max: 80, step: 5, d: 0, unit: '°', get: () => app.WM.yaw, set: (v) => (app.WM.yaw = v) },
     { g: 3, id: 'wpit', label: 'Wavemaker naik/turun (+ ke atas)', min: -45, max: 45, step: 5, d: 0, unit: '°', get: () => app.WM.pitch, set: (v) => (app.WM.pitch = v) },
@@ -122,6 +123,7 @@ export function buildControls(h) {
     inp.addEventListener('input', () => {
       s.set(+inp.value);
       out.textContent = s.show ? s.show(+inp.value) : fmt(+inp.value, s.d) + s.unit;
+      s.auto?.();
     });
   }
 
@@ -202,17 +204,20 @@ export function buildControls(h) {
   selectRow(gs[3], 'Arah bidang potong tank', 'fvOrient', [
     ['h', 'Mendatar (lihat dari atas / miring)'],
     ['v', 'Tegak memanjang (lihat dari depan)'],
-  ], (v) => {
-    app.FV.orient = v;
-    applyView();
-  }).value = app.FV.orient;
+  ], (v) => planeAt(v)).value = app.FV.orient;
   selectRow(gs[3], 'Sorot pada kabut 3D', 'fvFogMode', [
     ['fast', 'Nilai tinggi menonjol (jet / air tua / pewarna)'],
     ['dead', 'Zona mati (laju < 1 cm/s)'],
     ['low', 'Nilai rendah menonjol (mis. air tawar ATO)'],
     ['all', 'Semua nilai'],
-  ], (v) => (app.FV.fogMode = v)).value = app.FV.fogMode;
-  selectRow(gs[3], 'Besaran yang ditampilkan', 'fvValue', QUANTITY_OPTIONS, (v) => (app.FV.value = v)).value = app.FV.value;
+  ], (v) => {
+    app.FV.fogMode = v;
+    ensureViz('fog');
+  }).value = app.FV.fogMode;
+  selectRow(gs[3], 'Besaran yang ditampilkan', 'fvValue', QUANTITY_OPTIONS, (v) => {
+    app.FV.value = v;
+    ensureAnyViz();
+  }).value = app.FV.value;
 
   /* pewarna "air baru dari filter" */
   const dyeStatus = el('span', { className: 'dye-status', textContent: 'Pewarna: tidak dilepas' });
@@ -220,7 +225,7 @@ export function buildControls(h) {
     el('p', {
       className: 'note',
       textContent:
-        'Tandai air yang keluar dari duckbill, lalu lihat bagaimana air itu menyebar di tank, tersedot intake, melewati filter, dan kembali. Pilih besaran "Air baru dari filter (%)" dan nyalakan kabut 3D atau bidang potong.',
+        'Tandai air yang keluar dari duckbill, lalu lihat bagaimana air itu menyebar di tank, tersedot intake, melewati filter, dan kembali. Besaran "Air baru dari filter (%)" dan kabut 3D dinyalakan otomatis bila belum ada tampilan arus.',
     }),
   ]);
   {
@@ -233,6 +238,7 @@ export function buildControls(h) {
           app.FV.value = 'dye';
           syncUI();
         }
+        ensureAnyViz(); // pewarna tidak terlihat tanpa kabut/bidang potong
       });
       b.append(e);
     };
@@ -243,7 +249,10 @@ export function buildControls(h) {
     b.append(clr);
     dyeBox.append(b, dyeStatus);
   }
-  selectRow(gs[3], 'Palet warna', 'fvCmap', COLORMAPS.map((k) => [k, COLORMAP_LABELS[k]]), (v) => (app.FV.cmap = v)).value = app.FV.cmap;
+  selectRow(gs[3], 'Palet warna', 'fvCmap', COLORMAPS.map((k) => [k, COLORMAP_LABELS[k]]), (v) => {
+    app.FV.cmap = v;
+    ensureAnyViz();
+  }).value = app.FV.cmap;
   const legend3d = el('div', {
     className: 'lg',
     innerHTML:
@@ -253,7 +262,7 @@ export function buildControls(h) {
     className: 'note',
     style: 'margin-top:6px',
     textContent:
-      'Garis arus = jejak ribuan partikel yang terbawa arus pada bidang potong; warnanya mengikuti laju. Kabut 3D menampilkan laju di seluruh volume air sekaligus (paling berat untuk HP; turunkan kualitas grafis bila tersendat). Pola arus butuh ±30 detik simulasi untuk stabil setelah arah diubah. Model kisi 1,5 cm ini untuk membandingkan arah nozzle/wavemaker, bukan angka mutlak.',
+      'Garis arus = jejak ribuan partikel yang terbawa arus pada bidang potong; warnanya mengikuti laju. Kabut 3D menampilkan laju di seluruh volume air sekaligus (paling berat untuk HP; turunkan kualitas grafis bila tersendat). Pola arus butuh ±30 detik simulasi untuk stabil setelah arah diubah. Model kisi 1,5 cm ini untuk membandingkan arah nozzle/wavemaker, bukan angka mutlak. Kontrol yang tampak redup berarti tampilannya sedang mati; mengubahnya langsung menyalakan tampilan itu.',
   });
   /* preset tampilan */
   let modeBtns = null;
@@ -330,23 +339,63 @@ export function buildControls(h) {
   function applyView() {
     h.applyView();
     const { V } = app;
-    U.sliceY.inp.disabled = !(V.planeOn && app.FV.orient === 'h');
-    U.sliceZ.inp.disabled = !(V.planeOn && app.FV.orient === 'v');
-    U.filterZ.inp.disabled = !V.filterPlane;
+    // kontrol arus tidak pernah dikunci: mengubahnya menyalakan tampilan yang dibutuhkan (ensureViz).
+    // Penanda redup hanya memberi tahu bahwa tampilannya sedang mati.
+    const idle = (ids, off) => {
+      for (const id of ids) {
+        const e = $(id);
+        const lab = e && document.querySelector(`label[for="${id}"]`);
+        lab?.classList.toggle('idle', off);
+        e?.classList.toggle('idle', off);
+      }
+    };
     const anyPlane = V.cfd && (V.planeOn || V.filterPlane);
     const anyViz = anyPlane || (V.cfd && V.fog);
-    for (const k of ['mapAlpha', 'anim']) U[k].inp.disabled = !anyPlane;
-    U.vmax.inp.disabled = !anyViz;
-    for (const id of ['fvValue', 'fvCmap']) $(id).disabled = !anyViz;
-    U.fogDensity.inp.disabled = !(V.cfd && V.fog);
-    $('fvFogMode').disabled = !(V.cfd && V.fog);
-    $('fvOrient').disabled = !V.planeOn;
+    idle(['fvOrient', 's_sliceY', 's_sliceZ'], !(V.cfd && V.planeOn));
+    idle(['s_filterZ'], !(V.cfd && V.filterPlane));
+    idle(['s_mapAlpha', 's_anim'], !anyPlane);
+    idle(['fvValue', 'fvCmap', 's_vmax'], !anyViz);
+    idle(['fvFogMode', 's_fogDensity'], !(V.cfd && V.fog));
     const fb = $('bFlow');
     if (fb) {
       const on = V.planeOn || V.filterPlane;
       fb.textContent = on ? 'Tampilan penuh' : 'Peta arus';
       fb.classList.toggle('active', on);
     }
+  }
+
+  /** Nyalakan tampilan arus yang dibutuhkan kontrol yang sedang diubah (+ CFD), lalu beri tahu pengguna. */
+  function ensureViz(...keys) {
+    const LABEL = { cfd: 'Simulasi arus (CFD)', planeOn: 'Bidang potong tank', filterPlane: 'Bidang potong filter', fog: 'Kabut 3D' };
+    const turned = [];
+    for (const k of ['cfd', ...keys]) {
+      if (k && !app.V[k]) {
+        app.V[k] = true;
+        turned.push(LABEL[k]);
+      }
+    }
+    if (!turned.length) return;
+    applyView();
+    syncUI();
+    h.notify?.(turned.join(' + ') + ' dinyalakan otomatis');
+  }
+  /** Besaran skalar (umur/pewarna/salinitas) paling jelas di kabut 3D; laju arus di bidang potong. */
+  function ensureAnyViz() {
+    const V = app.V;
+    if (V.planeOn || V.filterPlane || V.fog) ensureViz();
+    else ensureViz(['age', 'dye', 'salt'].includes(app.FV.value) ? 'fog' : 'planeOn');
+  }
+  function ensurePlane() {
+    ensureViz(app.V.planeOn || app.V.filterPlane ? null : 'planeOn');
+  }
+  /** Bidang potong tank dengan arah tertentu ('h' mendatar, 'v' tegak). */
+  function planeAt(o) {
+    if (app.FV.orient !== o) {
+      app.FV.orient = o;
+      applyView();
+      syncUI();
+    }
+    ensureViz('planeOn');
   }
 
   function syncUI() {
@@ -480,6 +529,7 @@ export function buildControls(h) {
         ['Ornamen', ['t_fish', 't_coral', 't_rock', 't_sand', 't_lamp', 't_room']],
         ['Simulasi & grafis', ['s_sp', 'qual', 's_tint', 't_flow', 't_clear', 't_label']],
         ['Skimmer, latar & lampu', ['t_dark', 'sktype', 'bgsel', 'bgColor', 'lampsel', 's_li']],
+        ['Laporan masalah (diagnostik)', [h.diagBox]],
       ],
     },
     { id: 'metrik', title: 'Metrik', content: [$('metricsCard')] },
@@ -532,5 +582,16 @@ export function buildControls(h) {
     if (dyeStatus.textContent !== txt) dyeStatus.textContent = txt;
   }
 
-  return { syncUI, applyView, markSaved, U, showTab, setDyeStatus, studiesRoot: sections.studi };
+  /** Buka tab + grup yang berisi elemen tertentu (mis. laporan diagnostik). */
+  function reveal(node) {
+    const sec = node?.closest('section[role="tabpanel"]');
+    if (!sec) return;
+    showTab(sec.id.replace('tab-', ''));
+    const d = node.closest('details');
+    if (d) d.open = true;
+    node.scrollIntoView({ block: 'nearest' });
+  }
+  const currentTab = () => Object.keys(sections).find((k) => !sections[k].hidden) || '-';
+
+  return { syncUI, applyView, markSaved, U, showTab, reveal, currentTab, setDyeStatus, studiesRoot: sections.studi };
 }

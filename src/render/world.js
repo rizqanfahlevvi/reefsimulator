@@ -34,6 +34,17 @@ export function createWorld(container, app, flow) {
   setDotTexture(tex.dot);
   const M = createMaterials(tex);
 
+  /* legenda jejak partikel 3D di tampilan (tanpa ini titik merah = zona mati mudah dikira error) */
+  const trLegend = document.createElement('div');
+  trLegend.id = 'trLegend';
+  trLegend.hidden = true;
+  trLegend.innerHTML =
+    '<div class="t">Titik = partikel terbawa arus (CFD)</div>' +
+    '<span><i style="background:#ed2e33"></i>&lt;1 cm/s zona mati</span><span><i style="background:#ffd633"></i>1–3</span>' +
+    '<span><i style="background:#2ee69e"></i>3–8</span><span><i style="background:#e6faff"></i>&gt;8 cm/s</span>';
+  container.append(trLegend);
+  let fvLegendEl = null;
+
   const room = buildRoom(scene, M);
   const tank = buildTank(scene, M);
   const sandG = buildSand(scene, M);
@@ -278,6 +289,9 @@ export function createWorld(container, app, flow) {
     movePoints(fp.ret, fp.retPath, S.vr * 0.35, simdt, 0.3, 0.3, 0.3, Math.abs(S.vr) < 1);
     if (V.cfd && V.tr3d && simdt > 0) tracers.update(Math.max(0.01, Math.min(0.06, simdt)), flow, S.HT);
     fviz.update(real, simdt, { on: V.cfd && V.fog, stats: fog.stats, mode: app.FV.fogMode });
+    fvLegendEl ??= document.getElementById('fvLegend');
+    const showTr = V.cfd && V.tr3d && (!fvLegendEl || fvLegendEl.hidden);
+    if (trLegend.hidden === showTr) trLegend.hidden = !showTr;
     fog.update(fviz.range);
 
     foamAt(fp.foam, tt, 0, 26, f2, 21.7, 23.4, S.H3, -12.2, -2.8);

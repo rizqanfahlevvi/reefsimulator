@@ -11,7 +11,12 @@ import { buildElectricity, EL } from './ui/electricity.js';
 import { loadSettings, saveSettings, clearSettings, applySettings, snapshot, sanitize } from './settings.js';
 import { buildStudies } from './ui/studies.js';
 import { drawCharts } from './ui/charts.js';
+import { buildDiagnostics } from './ui/diagnostics.js';
+import { toast } from './ui/toast.js';
+import { diag, logEvent, errorText, installGlobalHandlers } from './diag.js';
 import { $ } from './util/format.js';
+
+installGlobalHandlers();
 
 const view = $('view');
 let world = null;
@@ -30,7 +35,14 @@ let world = null;
   }
 }
 
-const flow = new FlowClient(app);
+const flow = new FlowClient(app, {
+  onEvent: logEvent,
+  onCfdOff: () => {
+    ui.applyView();
+    ui.syncUI();
+    toast('Simulasi arus dimatikan karena error berulang — lihat Tampilan → Laporan masalah');
+  },
+});
 
 /* dunia 3D (dimuat terpisah supaya UI dan angka tetap jalan bila WebGL gagal) */
 async function initWorld() {
@@ -39,6 +51,7 @@ async function initWorld() {
     world = createWorld(view, app, flow);
   } catch (err) {
     console.error('Gagal membuat tampilan 3D', err);
+    logEvent('error', 'Tampilan 3D gagal dibuat: ' + errorText(err));
     $('glError').hidden = false;
     $('vbtn').hidden = true;
     $('hint').hidden = true;
@@ -61,6 +74,12 @@ const hooks = {
   updElec: () => elec.update(),
   /** pewarna air baru: 'pulse' | 'cont' | 'clear' */
   dye: (mode, seconds) => (mode === 'clear' ? flow.clearDye() : flow.startDye(mode, seconds)),
+  /** Pesan singkat di tampilan 3D + dicatat di laporan diagnostik. */
+  notify: (msg) => {
+    toast(msg);
+    logEvent('auto', msg);
+  },
+  diagBox: null,
   resetSettings: () => {
     saveEnabled = false;
     clearTimeout(saveTimer);
@@ -70,7 +89,35 @@ const hooks = {
 };
 const elec = buildElectricity();
 const metrics = buildMetrics();
+const diagUI = buildDiagnostics({
+  getWorld: () => world,
+  flow,
+  getStudy: () => study?.def,
+  EL,
+  getTab: () => ui.currentTab(),
+  openDiag: () => ui.reveal(diagUI.box),
+});
+hooks.diagBox = diagUI.box;
 const ui = buildControls(hooks);
+
+/* jejak langkah pengguna untuk laporan diagnostik (tanpa data pribadi) */
+function controlName(t) {
+  const lab = document.querySelector(`label[for="${t.id}"]`);
+  return (lab?.querySelector('span')?.textContent || lab?.textContent || t.closest('label')?.textContent || t.id || '?').trim().slice(0, 60);
+}
+$('panel').addEventListener('change', (e) => {
+  const t = e.target;
+  if (!(t instanceof HTMLInputElement || t instanceof HTMLSelectElement) || t.type === 'color') return;
+  const v = t.type === 'checkbox' ? (t.checked ? 'nyala' : 'mati') : t instanceof HTMLSelectElement ? t.selectedOptions[0]?.textContent : t.value;
+  logEvent('ubah', `${controlName(t)} = ${v}`);
+});
+for (const id of ['panel', 'vbtn']) {
+  $(id)?.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (b) logEvent('klik', b.textContent.trim().slice(0, 50));
+  });
+}
+logEvent('info', `Halaman dimuat · CFD ${flow.mode} · 3D ${world ? 'ok' : 'gagal'}`);
 
 // perubahan slider siphon dibangun ulang dengan jeda (debounce) ±90 ms
 let siphonDirty = false;
@@ -80,6 +127,9 @@ on('siphon-dirty', () => (siphonDirty = true));
 document.querySelectorAll('#vbtn button[data-v]').forEach((b) => b.addEventListener('click', () => world?.setView(b.dataset.v)));
 
 if (world) {
+  const cv = world.renderer.domElement;
+  cv.addEventListener('webglcontextlost', () => logEvent('error', 'WebGL context hilang (GPU direset / memori grafis penuh)'));
+  cv.addEventListener('webglcontextrestored', () => logEvent('info', 'WebGL context pulih'));
   if (!autoQuality) world.setQuality(+app.quality);
   world.rebuildSiphon();
   window.addEventListener('resize', world.resize);
@@ -145,6 +195,7 @@ const studies = buildStudies(ui.studiesRoot, {
     if (study) restoreSnap(study.snap); // berganti studi: kembali dulu ke pengaturan pengguna
     flush(); // pastikan pengaturan pengguna terbaru tersimpan
     study = { def, snap: JSON.parse(JSON.stringify(snapshot(app, EL))) };
+    logEvent('studi', 'Mulai: ' + def.title);
     def.setup(app);
     restartSim();
     flow.clearDye();
@@ -156,6 +207,7 @@ const studies = buildStudies(ui.studiesRoot, {
   end() {
     if (!study) return;
     restoreSnap(study.snap);
+    logEvent('studi', 'Selesai: ' + study.def.title);
     study = null;
     flow.clearDye();
     restartSim();
@@ -191,6 +243,7 @@ function autoTune(raw) {
       qLow = 0;
       qWarm = 1.5;
       world.setQuality(world.quality + 1);
+      logEvent('info', `Kualitas grafis otomatis diturunkan ke level ${world.quality} (FPS ${Math.round(fps)})`);
     }
   } else qLow = 0;
 }
@@ -199,29 +252,50 @@ let last = performance.now();
 let uiAcc = 0;
 let chAcc = 0;
 let elecTick = 0;
+let fpsN = 0;
+let fpsT = 0;
+/** Jalankan satu bagian frame; error dicatat (bukan menghentikan loop animasi). */
+function guarded(tag, fn) {
+  try {
+    return fn();
+  } catch (err) {
+    logEvent('error', tag + ': ' + errorText(err));
+    return 0;
+  }
+}
 function frame(now) {
   const raw = Math.max(0, (now - last) / 1000);
   const real = Math.min(0.05, raw);
   last = now;
+  fpsN++;
+  fpsT += raw;
+  if (fpsT >= 1) {
+    diag.fps = fpsN / fpsT;
+    fpsN = 0;
+    fpsT = 0;
+  }
 
-  const simdt = advance(real, ui.syncUI);
-  flow.tick(real, simdt);
+  const simdt = guarded('Simulasi', () => advance(real, ui.syncUI));
+  guarded('CFD', () => flow.tick(real, simdt));
   if (world) {
     if (siphonDirty && now - siphonAt > 90) {
       siphonAt = now;
       siphonDirty = false;
-      world.rebuildSiphon();
+      guarded('Bangun siphon', () => world.rebuildSiphon());
     }
-    world.update(real, simdt);
-    world.render();
+    guarded('Render', () => {
+      world.update(real, simdt);
+      world.render();
+    });
   }
   // timer UI memakai waktu nyata (bukan dt yang dibatasi) supaya tetap responsif di perangkat lambat
   const wall = Math.min(1, raw);
   uiAcc += wall;
   if (uiAcc > 0.2) {
     uiAcc = 0;
-    metrics.update();
+    guarded('Metrik', () => metrics.update());
     ui.setDyeStatus(flow.dyeStatus());
+    diagUI.update();
     if (elecTick++ % 5 === 0) elec.update();
   }
   chAcc += wall;
@@ -266,6 +340,8 @@ window.__sim = {
     return world;
   },
   setView: (k) => world?.setView(k),
+  diag,
+  report: () => diagUI.report(),
   /** majukan animasi garis arus n langkah (diagnostik) */
   flowAdvance: (n, dt) => world?.fviz.debugAdvance(n, dt),
 };

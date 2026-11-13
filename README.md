@@ -67,7 +67,8 @@ src/
     quantity.js         besaran yang ditampilkan (laju, umur air, pewarna, salinitas) + skala otomatis
     scene/*.js          ruangan, tank, aquascape, ikan, peralatan, air, siphon, partikel, jejak, label
   ui/                   kontrol + tab, metrik/status, grafik, listrik, studi terpandu
-tests/                  Vitest: regresi hidrolik vs versi 1, solver Poisson, engine CFD
+  diag.js               log kejadian & error global untuk laporan diagnostik (lokal)
+tests/                  Vitest: regresi hidrolik vs versi 1, solver Poisson, engine CFD, ketahanan klien
 ```
 
 ## Antarmuka
@@ -80,6 +81,23 @@ mengisi tank, umur air & ruang mati, ATO & salinitas lokal, kapas mampet, peta z
 aliran di filter). Studi mengatur parameter, tampilan, dan kamera, menampilkan
 panduan "yang perlu diperhatikan", dan mengembalikan pengaturan pengguna saat diakhiri — selama studi berjalan,
 pengaturan tersimpan tidak ditimpa (`src/ui/studies.js`).
+
+Kontrol di tab **Arus** tidak pernah dikunci. Bila tampilannya sedang mati (kontrol tampak redup), mengubah kontrol
+itu langsung menyalakan tampilan yang dibutuhkan (mis. memilih besaran "Umur air" menyalakan kabut 3D, menggeser tinggi
+bidang potong menyalakan bidang potong tank) dan memberi tahu lewat pesan singkat di tampilan 3D. Saat jejak partikel 3D
+aktif, legenda warnanya tampil di pojok tampilan 3D (merah = arus < 1 cm/s, bukan error).
+
+## Laporan masalah (diagnostik)
+
+Tab **Tampilan → Laporan masalah** berisi ringkasan kesehatan (FPS, kualitas grafis, waktu per langkah CFD, seberapa
+jauh CFD mengikuti waktu simulasi, jumlah error) dan tombol **Salin laporan** / **Bagikan…**. Laporan teks berisi versi
+build (hash commit), perangkat & GPU, pengaturan, dan 40 kejadian terakhir (langkah pengguna, perubahan otomatis, error),
+sehingga masalah di HP bisa dilaporkan tanpa screenshot. Bila ada error, lencana merah muncul di tampilan 3D; ketuk untuk
+menyalin laporan. Semua dibuat di perangkat — tidak ada data yang dikirim otomatis (`src/diag.js`, `src/ui/diagnostics.js`).
+
+Ketahanan: error di dalam langkah CFD ditangkap worker dan klien pulih otomatis (5 error berturut-turut → CFD dimatikan
+dengan pemberitahuan), worker yang tidak menjawab 10 detik dimulai ulang, medan NaN dinolkan dan diulang, error di loop
+render tidak lagi menghentikan animasi, dan modul build lama yang hilang setelah deploy baru memicu muat ulang sekali.
 
 ## Pengaturan tersimpan
 
