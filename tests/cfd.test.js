@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createFlowEngine } from '../src/cfd/engine.js';
 import { PoissonSolver } from '../src/cfd/poisson.js';
-import { T3, F2 } from '../src/cfd/grid.js';
+import { T3, F3 } from '../src/cfd/grid.js';
 import { colormap, COLORMAPS, colormapGLSL } from '../src/render/colormaps.js';
 import { ROCKS } from '../src/layout.js';
 
@@ -25,21 +25,37 @@ function message(dt, extra = {}) {
       [5, 8.8, 3.5, -50],
       [5, 26.5, 6.9, -40],
     ],
-    L: [23.35, 23.13, 20.63, 18],
-    clog: 0,
-    jets2: [[5, 21.7, 0, -30]],
-    vols2: [
-      ['p', 5, 21.7, 90],
-      ['p', 44.5, 2.5, -90],
-    ],
+    filter: {
+      L: [23.35, 23.13, 20.63, 18],
+      clog: 0,
+      jets: [
+        [4.5, 21.7, -8, 0, -25, 0],
+        [5.5, 21.7, -7, 0, -25, 0],
+      ],
+      ljets: [[22, 20.3, 0, -20, 0]],
+      pts: [
+        [5, 21.7, -7.5, 90],
+        [44.5, 2.4, -3.8, -90],
+      ],
+      lines: [
+        [22, 20.3, 90],
+        [40, 17.7, 90],
+      ],
+      strips: [
+        [19.5, 20.9, -90],
+        [37.5, 38.9, -90],
+      ],
+    },
     wantStats: true,
     reset: false,
     bu: new Float32Array(T3.N),
     bv: new Float32Array(T3.N),
     bw: new Float32Array(T3.N),
-    ba: new Float32Array(F2.N),
-    bb: new Float32Array(F2.N),
     bm: new Float32Array(T3.N),
+    bfu: new Float32Array(F3.N),
+    bfv: new Float32Array(F3.N),
+    bfw: new Float32Array(F3.N),
+    bfm: new Float32Array(F3.N),
     ...extra,
   };
 }
@@ -89,9 +105,8 @@ describe('engine arus', () => {
     });
     eng({ t: 'init', rocks: ROCKS });
     for (let n = 0; n < 60; n++) eng(message(0.1));
-    const m = message(0.1);
     // jet ~28 cm/s pada sel 1,5 cm → skala laju regangan ~18 1/s
-    expect(eng.debug.maxDivergence(m.vols)).toBeLessThan(0.02);
+    expect(eng.debug.tank.maxDivergence()).toBeLessThan(0.02);
     expect(out.stats.mean).toBeGreaterThan(0.1); // rata-rata waktu τ = 8 dtk masih naik
     // laju rata-rata waktu dikirim untuk peta "zona mati" di bidang potong
     let mx = 0;
@@ -100,19 +115,31 @@ describe('engine arus', () => {
     expect(mx).toBeLessThanOrEqual(150);
   });
 
-  it('filter 2D: divergensi kecil, kecepatan berhingga', () => {
+  it('filter 3D: divergensi kecil, aliran melewati celah sekat dan riser', () => {
     let out;
+    let solF; // masker hanya dikirim saat berubah
     const eng = createFlowEngine((o) => {
       out = o;
+      if (o.solF) solF = o.solF;
     });
     eng({ t: 'init', rocks: ROCKS });
-    for (let n = 0; n < 40; n++) eng(message(0.1));
-    const m = message(0.1);
-    expect(eng.debug.max2DDivergence(m.vols2)).toBeLessThan(0.5);
+    for (let n = 0; n < 60; n++) eng(message(0.1));
+    const { filt } = eng.debug;
+    expect(filt.maxDivergence()).toBeLessThan(0.05);
+    // tiga komponen terhubung: chamber 1+2 (celah sekat 1), chamber 3+riser (celah sekat 3), chamber pompa
+    expect(filt.solver.ncomp).toBe(3);
     let maxv = 0;
-    for (let c = 0; c < F2.N; c++) maxv = Math.max(maxv, Math.abs(out.a[c]), Math.abs(out.b[c]));
+    for (let c = 0; c < F3.N; c++) maxv = Math.max(maxv, Math.hypot(out.fu[c], out.fv[c], out.fw[c]));
     expect(Number.isFinite(maxv)).toBe(true);
-    expect(maxv).toBeGreaterThan(1);
+    expect(maxv).toBeGreaterThan(5);
+    // riser 1 cm × 10 cm dilalui 90 cm³/s → naik ±9 cm/s
+    const c = filt.cellOf(38, 10, -7.6);
+    expect(out.fv[c]).toBeGreaterThan(5);
+    // badan skimmer dan pompa padat
+    expect(filt.cellOf(16, 10, -7.5)).toBe(-1);
+    expect(filt.cellOf(44.5, 2, -7.5)).toBe(-1);
+    expect(solF).toBeDefined();
+    expect(solF[filt.cellOf(5, 10, -7.5)]).toBe(0);
   });
 
   it('reset mengosongkan medan kecepatan', () => {
@@ -125,6 +152,7 @@ describe('engine arus', () => {
     eng(message(0, { reset: true }));
     let s = 0;
     for (let c = 0; c < T3.N; c++) s += Math.abs(out.u[c]);
+    for (let c = 0; c < F3.N; c++) s += Math.abs(out.fu[c]);
     expect(s).toBe(0);
   });
 });
@@ -151,5 +179,31 @@ describe('palet warna peta kecepatan', () => {
     expect(g).toContain('cmTurbo');
     expect(g).toContain('cmPlasma');
     expect(g).toContain('cmViridis');
+  });
+});
+
+describe('pesan filter dari klien', () => {
+  it('sumber volume tiap komponen terhubung filter seimbang (normal, padam, kapas mampet)', async () => {
+    const { FlowClient } = await import('../src/cfd/client.js');
+    const H = await import('../src/physics/hydraulics.js');
+    const { DEFAULT_VIEW } = await import('../src/state.js');
+    for (const over of [{}, { clog: 0.9 }, { on: false }, { ato: true }]) {
+      const P = Object.assign(H.defaultParams(), over);
+      const S = H.initialState(P);
+      S.HP -= 1; // picu ATO
+      for (let n = 0; n < 4000; n++) {
+        if (n === 2000 && over.on === false) S.brk[0] = true;
+        H.step(S, P, 0.02);
+      }
+      const app = { S, P, V: { ...DEFAULT_VIEW }, NZL: { yaw: 20, pitch: 15 }, WM: { q: 1000, yaw: 0, pitch: 0, y: 16 } };
+      const fc = new FlowClient(app);
+      const f = fc.buildMessage(0.1).filter;
+      const comp = (x) => (x < 21 ? 0 : x < 39.1 ? 1 : 2);
+      const sum = [0, 0, 0];
+      for (const p of f.pts) sum[comp(p[0])] += p[3];
+      for (const l of f.lines) sum[comp(l[0])] += l[2];
+      for (const s of f.strips) sum[comp((s[0] + s[1]) / 2)] += s[2];
+      for (const v of sum) expect(Math.abs(v)).toBeLessThan(1e-9);
+    }
   });
 });

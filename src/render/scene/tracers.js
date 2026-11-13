@@ -1,6 +1,6 @@
 /**
  * Jejak partikel 3D berwarna dari medan arus CFD (titik + ekor).
- * Tank: 340 jejak 3D. Filter: 230 jejak 2D (rata-rata selebar chamber).
+ * Tank: 340 jejak, filter: 230 jejak — keduanya mengikuti medan arus 3D.
  */
 import * as THREE from 'three';
 import { speedColor } from '../../cfd/palette.js';
@@ -82,10 +82,11 @@ export function buildTracers(scene) {
       for (let t = 0; t < 10; t++) {
         const x = 0.7 + Math.random() * 48.6;
         const y = 0.2 + Math.random() * 24;
-        if (flow.cell2(x, y) >= 0) {
+        const z = -12.3 + Math.random() * 9.6;
+        if (flow.cellF(x, y, z) >= 0) {
           P[i * 3] = x;
           P[i * 3 + 1] = y;
-          P[i * 3 + 2] = -12.1 + Math.random() * 9.2;
+          P[i * 3 + 2] = z;
           life[i] = 6 + Math.random() * 12;
           return;
         }
@@ -101,7 +102,7 @@ export function buildTracers(scene) {
       const tank = i < NT;
       life[i] -= dt;
       age[i] += dt;
-      if (life[i] <= 0 || P[q + 1] < -900 || (tank ? flow.cellOf(P[q], P[q + 1], P[q + 2]) : flow.cell2(P[q], P[q + 1])) < 0) spawn(i, flow, HT);
+      if (life[i] <= 0 || P[q + 1] < -900 || (tank ? flow.cellOf(P[q], P[q + 1], P[q + 2]) : flow.cellF(P[q], P[q + 1], P[q + 2])) < 0) spawn(i, flow, HT);
       let s;
       if (tank) {
         flow.sample3(P[q], P[q + 1], P[q + 2], V);
@@ -111,11 +112,11 @@ export function buildTracers(scene) {
         P[q + 2] += V[2] * dt;
         speedColor(s, K);
       } else {
-        flow.sample2(P[q], P[q + 1], V);
-        V[2] = 0;
-        s = Math.hypot(V[0], V[1]);
+        flow.sampleF(P[q], P[q + 1], P[q + 2], V);
+        s = Math.hypot(V[0], V[1], V[2]);
         P[q] += V[0] * dt;
         P[q + 1] += V[1] * dt;
+        P[q + 2] += V[2] * dt;
         const t = Math.min(1, s / 9);
         K[0] = 0.05 + 0.95 * t;
         K[1] = 0.95;

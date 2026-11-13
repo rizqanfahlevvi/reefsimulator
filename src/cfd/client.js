@@ -3,8 +3,8 @@
  * menyimpan medan kecepatan terakhir dan menyediakan sampling untuk jejak partikel.
  */
 import { G } from '../physics/constants.js';
-import { T3, F2 } from './grid.js';
-import { ROCKS, NOZZLE, WAVEMAKER, dirOf, siphonX } from '../layout.js';
+import { T3, F3, cellIndex, trilinear } from './grid.js';
+import { ROCKS, NOZZLE, WAVEMAKER, FILTER, dirOf, siphonX } from '../layout.js';
 
 const norm3 = (a) => {
   const l = Math.hypot(a[0], a[1], a[2]) || 1;
@@ -14,13 +14,16 @@ const norm3 = (a) => {
   return a;
 };
 
+const BUF_KEYS = ['u', 'v', 'w', 'm', 'fu', 'fv', 'fw', 'fm'];
 const makeBuffers = () => ({
   u: new Float32Array(T3.N),
   v: new Float32Array(T3.N),
   w: new Float32Array(T3.N),
-  a: new Float32Array(F2.N),
-  b: new Float32Array(F2.N),
   m: new Float32Array(T3.N),
+  fu: new Float32Array(F3.N),
+  fv: new Float32Array(F3.N),
+  fw: new Float32Array(F3.N),
+  fm: new Float32Array(F3.N),
 });
 
 export class FlowClient {
@@ -34,13 +37,16 @@ export class FlowClient {
     this.fu = new Float32Array(T3.N);
     this.fv = new Float32Array(T3.N);
     this.fw = new Float32Array(T3.N);
-    this.f2a = new Float32Array(F2.N);
-    this.f2b = new Float32Array(F2.N);
     this.favg = new Float32Array(T3.N); // laju rata-rata waktu per sel (tank)
+    // filter 3D
+    this.ffu = new Float32Array(F3.N);
+    this.ffv = new Float32Array(F3.N);
+    this.ffw = new Float32Array(F3.N);
+    this.ffavg = new Float32Array(F3.N);
+    this.ffsol = new Uint8Array(F3.N).fill(1);
     /** Bertambah setiap ada medan baru dari worker (untuk refresh tekstur bidang potong). */
     this.version = 0;
     this.fsol = new Uint8Array(T3.N).fill(1);
-    this.f2sol = new Uint8Array(F2.N).fill(1);
     this.spare = makeBuffers();
     this.busy = false;
     this.pend = 0;
@@ -100,28 +106,25 @@ export class FlowClient {
     if (!this.spare || !this.send) return;
     const m = this.buildMessage(dt);
     const s = this.spare;
-    m.bu = s.u;
-    m.bv = s.v;
-    m.bw = s.w;
-    m.ba = s.a;
-    m.bb = s.b;
-    m.bm = s.m;
+    for (const k of BUF_KEYS) m['b' + k] = s[k];
     this.spare = null;
     this.busy = true;
-    this.send(m, this.mode === 'worker' ? [s.u.buffer, s.v.buffer, s.w.buffer, s.a.buffer, s.b.buffer, s.m.buffer] : undefined);
+    this.send(m, this.mode === 'worker' ? BUF_KEYS.map((k) => s[k].buffer) : undefined);
   }
 
   onResult(m) {
     // kembalikan buffer lama sebagai cadangan untuk pesan berikutnya (tanpa alokasi)
-    const old = { u: this.fu, v: this.fv, w: this.fw, a: this.f2a, b: this.f2b, m: this.favg };
+    const old = { u: this.fu, v: this.fv, w: this.fw, m: this.favg, fu: this.ffu, fv: this.ffv, fw: this.ffw, fm: this.ffavg };
     this.fu = m.u;
     this.fv = m.v;
     this.fw = m.w;
-    this.f2a = m.a;
-    this.f2b = m.b;
     this.favg = m.m;
+    this.ffu = m.fu;
+    this.ffv = m.fv;
+    this.ffw = m.fw;
+    this.ffavg = m.fm;
     if (m.sol) this.fsol = m.sol;
-    if (m.sol2) this.f2sol = m.sol2;
+    if (m.solF) this.ffsol = m.solF;
     if (m.stats) this.app.flowStats = m.stats;
     this.version++;
     this.spare = old;
@@ -204,34 +207,20 @@ export class FlowClient {
     );
   }
 
-  cell2(x, y) {
-    const i = Math.floor((x - 0.5) * 2) + 1;
-    const j = Math.floor(y * 2) + 1;
-    if (i < 1 || i > F2.mx || j < 1 || j > F2.my) return -1;
-    const c = i + F2.MX * j;
-    return this.f2sol[c] ? -1 : c;
+  /* ---------- filter 3D ---------- */
+  cellF(x, y, z) {
+    return cellIndex(F3, this.ffsol, x, y, z);
   }
 
-  sample2(x, y, o) {
-    const MX = F2.MX;
-    let gx = (x - 0.5) * 2 + 0.5;
-    let gy = y * 2 + 0.5;
-    if (gx < 0.5) gx = 0.5;
-    else if (gx > F2.mx + 0.5) gx = F2.mx + 0.5;
-    if (gy < 0.5) gy = 0.5;
-    else if (gy > F2.my + 0.5) gy = F2.my + 0.5;
-    const i0 = gx | 0;
-    const j0 = gy | 0;
-    const s1 = gx - i0;
-    const s0 = 1 - s1;
-    const t1 = gy - j0;
-    const t0 = 1 - t1;
-    const q = i0 + MX * j0;
-    const A = this.f2a;
-    const B = this.f2b;
-    o[0] = t0 * (s0 * A[q] + s1 * A[q + 1]) + t1 * (s0 * A[q + MX] + s1 * A[q + MX + 1]);
-    o[1] = t0 * (s0 * B[q] + s1 * B[q + 1]) + t1 * (s0 * B[q + MX] + s1 * B[q + MX + 1]);
+  sampleF(x, y, z, o) {
+    o[0] = trilinear(F3, this.ffu, x, y, z);
+    o[1] = trilinear(F3, this.ffv, x, y, z);
+    o[2] = trilinear(F3, this.ffw, x, y, z);
     return o;
+  }
+
+  sampleAvgF(x, y, z) {
+    return trilinear(F3, this.ffavg, x, y, z);
   }
 
   /* ---------- pesan ke engine ---------- */
@@ -241,8 +230,6 @@ export class FlowClient {
     const q = S.q;
     const jets = [];
     const vols = [];
-    const jets2 = [];
-    const vols2 = [];
     const Q = Math.max(0, q.r);
 
     /* tank: duckbill sebagai sumber momentum (kipas 3 sel), intake bawah dan mangkuk skimmer sebagai penyedot */
@@ -304,52 +291,63 @@ export class FlowClient {
           jets.push([o[0] + a * h * px, Math.min(o[1] + b * h * uy, S.HT - 0.6), o[2] + a * h * pz, d[0] * U, d[1] * U, d[2] * U]);
     }
 
-    /* filter: ujung buang siphon, terjunan di sekat 2 dan 4, isapan pompa, naik-turun permukaan tiap chamber */
+    /*
+     * filter 3D (satuan cm): pancuran siphon, aliran melewati weir 2 & 4 (sumur hulu + sumber
+     * dan jet jatuh selebar chamber di hilir), naik-turun muka air tiap chamber, isapan pompa, ATO.
+     */
+    const fz = FILTER.zMid;
+    const fjets = [];
+    const fljets = [];
+    const fpts = [];
+    const flines = [];
+    const fstrips = [];
     const As = (Math.PI * P.D * P.D) / 4;
     const free = P.zd > S.H1;
     const y0 = free ? S.H1 - 0.3 : P.zd - 0.3;
+    let qsP = 0; // debit siphon yang benar-benar dikirim sebagai sumber
     for (let i = 0; i < P.n; i++) {
       const vp = S.vs[i];
       const Qi = vp * As;
       if (Math.abs(Qi) < 0.5) continue;
       const x = siphonX(P.n, i);
-      vols2.push(['p', x, y0, Qi]);
+      fpts.push([x, y0, fz, Qi]);
+      qsP += Qi;
       if (Qi > 0) {
         const vi = free ? Math.sqrt(vp * vp + 2 * G * (P.zd - S.H1)) : vp;
-        const U = Math.min(60, Math.sqrt((Qi * vi) / 15));
-        jets2.push([x - 0.5, y0, 0, -U], [x, y0, 0, -U], [x + 0.5, y0, 0, -U]);
+        const U = Math.min(60, Math.sqrt((Qi * vi) / 4)); // fluks momentum pada 2×2 sel
+        for (const dx of [-0.5, 0.5]) for (const dz of [-0.5, 0.5]) fjets.push([x + dx, y0, fz + dz, 0, -U, 0]);
       }
     }
-    const n3 = q.q23 - q.q34;
-    vols2.push(
-      ['s', 1, 20, -(q.s - q.q12)],
-      ['s', 22, 41, -(q.q12 - q.q23)],
-      ['s', 43, 72, (-n3 * 30) / 34],
-      ['s', 74, 77, (-n3 * 4) / 34],
-      ['s', 79, 98, -(q.q34 - q.r + q.a + q.v)],
+    const weir = (qq, Hu, Hd, crest, w) => {
+      if (Math.abs(qq) <= 0.3) return 0;
+      const falls = Math.min(Hu, Hd) <= crest + 0.25;
+      const U = Math.min(60, Math.sqrt((Math.abs(qq) * Math.sqrt(2 * G * Math.max(0.2, Math.abs(Hu - Hd)))) / 10));
+      if (qq > 0) {
+        fstrips.push([w.up[0], w.up[1], -qq]);
+        flines.push([w.down, Hd - 0.3, qq]);
+        if (falls) fljets.push([w.down, Hd - 0.3, 0, -U, 0]);
+      } else {
+        fstrips.push([w.down - 0.5, w.down + 0.5, qq]);
+        flines.push([w.back, Hu - 0.3, -qq]);
+        if (falls) fljets.push([w.back, Hu - 0.3, 0, -U, 0]);
+      }
+      return qq;
+    };
+    const p23 = weir(q.q23, S.H2, S.H3, 22.5, FILTER.weir2);
+    const p34 = weir(q.q34, S.H3, S.HP, 20, FILTER.weir4);
+    const pr = Math.abs(q.r) > 0.3 ? q.r : 0;
+    const pa = Math.abs(q.a + q.v) > 0.01 ? q.a + q.v : 0;
+    if (pr) fpts.push([...FILTER.pump.intake, -pr]);
+    if (pa) fpts.push([FILTER.ato[0], S.HP - 0.3, FILTER.ato[2], pa]);
+    // naik-turun muka air tiap chamber = −(masuk − keluar); disusun dari jumlah yang benar-benar
+    // dikirim di atas sehingga tiap komponen terhubung (ch1+2, ch3+riser, ch pompa) seimbang tepat
+    const st = FILTER.strips;
+    fstrips.push(
+      [st.c1[0], st.c1[1], -(qsP - q.q12)],
+      [st.c2[0], st.c2[1], -(q.q12 - p23)],
+      [st.c3[0], st.c3[1], -(p23 - p34)],
+      [st.pump[0], st.pump[1], -(p34 - pr + pa)],
     );
-    if (Math.min(S.H2, S.H3) <= 22.75 && Math.abs(q.q23) > 0.3) {
-      const U = Math.min(60, Math.sqrt((Math.abs(q.q23) * Math.sqrt(2 * G * Math.max(0.2, Math.abs(S.H2 - S.H3)))) / 5));
-      if (q.q23 > 0) {
-        vols2.push(['s', 40, 41, -q.q23], ['p', 21.75, S.H3 - 0.3, q.q23]);
-        jets2.push([21.75, S.H3 - 0.3, 0, -U]);
-      } else {
-        vols2.push(['s', 43, 44, q.q23], ['p', 20.75, S.H2 - 0.3, -q.q23]);
-        jets2.push([20.75, S.H2 - 0.3, 0, -U]);
-      }
-    }
-    if (Math.min(S.H3, S.HP) <= 20.25 && Math.abs(q.q34) > 0.3) {
-      const U = Math.min(60, Math.sqrt((Math.abs(q.q34) * Math.sqrt(2 * G * Math.max(0.2, Math.abs(S.H3 - S.HP)))) / 5));
-      if (q.q34 > 0) {
-        vols2.push(['s', 76, 77, -q.q34], ['p', 39.75, S.HP - 0.3, q.q34]);
-        jets2.push([39.75, S.HP - 0.3, 0, -U]);
-      } else {
-        vols2.push(['s', 79, 80, q.q34], ['p', 38.75, S.H3 - 0.3, -q.q34]);
-        jets2.push([38.75, S.H3 - 0.3, 0, -U]);
-      }
-    }
-    if (Math.abs(q.r) > 0.3) vols2.push(['p', 44.5, 2.5, -q.r]);
-    if (Math.abs(q.a + q.v) > 0.01) vols2.push(['p', 47.5, S.HP - 0.3, q.a + q.v]);
 
     const m = {
       t: 'step',
@@ -360,10 +358,7 @@ export class FlowClient {
       box: P.box,
       jets,
       vols,
-      L: [S.H1, S.H2, S.H3, S.HP],
-      clog: P.clog,
-      jets2,
-      vols2,
+      filter: { L: [S.H1, S.H2, S.H3, S.HP], clog: P.clog, jets: fjets, ljets: fljets, pts: fpts, lines: flines, strips: fstrips },
       wantStats: this.wantStats,
       reset: this.resetNext,
     };

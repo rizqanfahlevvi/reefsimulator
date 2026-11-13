@@ -52,6 +52,7 @@ export function buildControls(h) {
     { g: 3, id: 'nyaw', label: 'Duckbill mendatar (0° lurus ke kiri, + ke depan)', min: -90, max: 90, step: 5, d: 0, unit: '°', get: () => app.NZL.yaw, set: (v) => (app.NZL.yaw = v) },
     { g: 3, id: 'npit', label: 'Duckbill naik/turun (+ ke atas)', min: -60, max: 45, step: 5, d: 0, unit: '°', get: () => app.NZL.pitch, set: (v) => (app.NZL.pitch = v) },
     { g: 3, id: 'sliceY', label: 'Tinggi bidang potong mendatar', min: 1, max: 28, step: 0.5, d: 1, unit: ' cm', get: () => app.sliceY, set: (v) => (app.sliceY = v) },
+    { g: 3, id: 'filterZ', label: 'Posisi bidang filter (dari kaca belakang filter)', min: 0.5, max: 9.5, step: 0.5, d: 1, unit: ' cm', get: () => app.FV.filterZ, set: (v) => (app.FV.filterZ = v) },
     { g: 3, id: 'sliceZ', label: 'Posisi bidang tegak (dari kaca belakang)', min: 1, max: 24, step: 0.5, d: 1, unit: ' cm', get: () => app.FV.sliceZ, set: (v) => (app.FV.sliceZ = v) },
     {
       g: 3, id: 'vmax', label: 'Batas atas skala warna', min: 0, max: 30, step: 1, d: 0, unit: ' cm/s',
@@ -76,7 +77,7 @@ export function buildControls(h) {
     { g: 3, id: 'cfd', view: true, label: 'Simulasi arus (CFD) di tank dan filter' },
     { g: 3, id: 'planeOn', view: true, label: 'Bidang potong tank: peta kecepatan + garis arus (animasi)' },
     { g: 3, id: 'filterPlane', view: true, label: 'Bidang potong filter: peta kecepatan + garis arus' },
-    { g: 3, id: 'fog', view: true, label: 'Kabut kecepatan 3D (seluruh volume tank)' },
+    { g: 3, id: 'fog', view: true, label: 'Kabut kecepatan 3D (seluruh volume tank + filter)' },
     { g: 3, id: 'tr3d', view: true, label: 'Jejak partikel 3D (titik + ekor)' },
     { g: 3, id: 'wm', view: true, label: 'Wavemaker di kaca kanan' },
     { g: 4, id: 'hole', label: 'Lubang siphon-break di return (26,3 cm)' },
@@ -228,7 +229,7 @@ export function buildControls(h) {
   {
     // susun ulang isi grup arus supaya berurutan secara logis
     const g3 = gs[3];
-    const order = ['t_cfd', 't_planeOn', 'fvOrient', 's_sliceY', 's_sliceZ', 't_filterPlane', 't_fog', 'fvFogMode', 's_fogDensity', 'fvValue', 'fvCmap', 's_vmax', 's_mapAlpha', 's_anim', 't_tr3d', legend3d, 's_nyaw', 's_npit', 't_wm', 's_wq', 's_wyaw', 's_wpit', 's_wy', note3];
+    const order = ['t_cfd', 't_planeOn', 'fvOrient', 's_sliceY', 's_sliceZ', 't_filterPlane', 's_filterZ', 't_fog', 'fvFogMode', 's_fogDensity', 'fvValue', 'fvCmap', 's_vmax', 's_mapAlpha', 's_anim', 't_tr3d', legend3d, 's_nyaw', 's_npit', 't_wm', 's_wq', 's_wyaw', 's_wpit', 's_wy', note3];
     for (const item of order) {
       if (typeof item !== 'string') {
         g3.append(item);
@@ -320,6 +321,7 @@ export function buildControls(h) {
     for (const k of ['wq', 'wyaw', 'wpit', 'wy']) U[k].inp.disabled = !V.wm;
     U.sliceY.inp.disabled = !(V.planeOn && app.FV.orient === 'h');
     U.sliceZ.inp.disabled = !(V.planeOn && app.FV.orient === 'v');
+    U.filterZ.inp.disabled = !V.filterPlane;
     const anyPlane = V.cfd && (V.planeOn || V.filterPlane);
     const anyViz = anyPlane || (V.cfd && V.fog);
     for (const k of ['mapAlpha', 'anim']) U[k].inp.disabled = !anyPlane;

@@ -81,8 +81,9 @@
             koreksi tenggelam Villemonte. Intake siphon dihitung sebagai dua cabang sejajar: lubang bawah dan mangkuk surface skimmer (weir di
             bibir mangkuk), sehingga level di dalam skimmer dan risiko menghisap udara ikut dihitung. Arus di tank dihitung dengan persamaan
             Navier–Stokes tak-termampatkan pada kisi MAC (staggered) 32×20×16 (sel 1,5 cm) dengan adveksi MacCormack dan proyeksi tekanan
-            PCG/MIC(0), sehingga kekekalan massa terpenuhi hingga toleransi solver. Arus di filter dihitung pada kisi staggered 2D 98×60 (sel 0,5
-            cm, dirata-rata selebar 10 cm): kapas dan media bio sebagai hambatan berpori, terjunan di sekat sebagai jet jatuh. Kedua solver
+            PCG/MIC(0), sehingga kekekalan massa terpenuhi hingga toleransi solver. Arus di filter juga dihitung 3D pada kisi MAC 49×30×10 (sel 1 cm) dengan solver yang sama: sekat 1 & 3
+            bercelah bawah, sekat 2 & 4 sebagai weir, badan protein skimmer dan pompa sebagai benda padat, kapas dan media bio
+            sebagai hambatan berpori, level air terpisah tiap chamber; terjunan di weir dimodelkan sebagai jet jatuh selebar chamber. Kedua solver
             berjalan di Web Worker supaya animasi tidak tersendat. Hasil arus bersifat kualitatif. Udara di puncak U mengikuti kedalaman intake,
             kecepatan gelembung Taylor (0,35·√gD), dan hisapan venturi. Kapas dihitung sebagai hambatan Darcy. Batu dan pasir mengurangi volume
             air sesuai slider. Salinitas dihitung dari neraca garam: ATO menambah air tawar, tumpahan membuang air asin. Ikan, karang, dan kaustik

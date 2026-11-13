@@ -51,7 +51,8 @@ src/
     constants.js        konstanta & geometri tank (CGS)
     hydraulics.js       model hidrolik (identik numerik dengan versi 1)
   cfd/
-    engine.js           Navier–Stokes: tank 3D (MAC) + filter 2D (MAC)
+    engine.js           konfigurasi tank 3D + filter 3D (geometri, level, sumber)
+    mac3d.js            solver Navier–Stokes MAC 3D generik (adveksi, viskositas eddy, berpori, proyeksi)
     poisson.js          solver tekanan PCG + MIC(0)
     flow.worker.js      Web Worker
     client.js           penyusun pesan + sampling medan untuk jejak partikel
@@ -84,7 +85,9 @@ sehingga data rusak/versi lama tidak membuat aplikasi error.
   sehingga hasil tidak bergantung pada frame rate.
 - **CFD tank**: kisi MAC staggered 32×20×16, adveksi MacCormack, viskositas eddy, tutup kaku di permukaan,
   proyeksi tekanan PCG/MIC(0). Divergensi sisa ±10⁻³ s⁻¹ (versi 1, kisi collocated + 16 iterasi Gauss–Seidel: ±13 s⁻¹).
-- **CFD filter**: kisi MAC 2D 98×60, kapas/bio sebagai hambatan berpori.
+- **CFD filter (3D)**: kisi MAC 49×30×10 @ 1 cm memakai solver yang sama (`src/cfd/mac3d.js`): sekat bercelah/weir,
+  badan skimmer & pompa padat, kapas/bio berpori, level per chamber. Aliran di atas weir = sumur hulu + sumber & jet jatuh
+  di hilir; sumber volume tiap komponen terhubung dijaga seimbang tepat (diuji).
 - **Visualisasi arus** (tombol *Peta arus*): bidang potong tank (mendatar/tegak) dan filter berisi peta warna laju arus
   (Turbo/Plasma/Viridis, sesaat atau rata-rata 8 dtk) + garis arus beranimasi. Garis arus dihitung di GPU
   (ribuan partikel di tekstur, jejak memudar ping-pong) sehingga ringan; lihat `src/render/flowviz.js`.

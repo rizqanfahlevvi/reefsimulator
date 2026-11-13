@@ -71,6 +71,7 @@ export const SPEC = {
   FV: {
     orient: oneOf('h', 'v'),
     sliceZ: num(1, 24),
+    filterZ: num(0.5, 9.5),
     cmap: oneOf('turbo', 'plasma', 'viridis'),
     value: oneOf('inst', 'avg'),
     vmax: num(0, 30),

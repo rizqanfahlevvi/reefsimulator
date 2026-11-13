@@ -13,6 +13,7 @@
 import * as THREE from 'three';
 import { colormapGLSL, colormap, COLORMAPS } from './colormaps.js';
 import { DEAD_LO, DEAD_HI, DEAD_MAX } from './flowfog.js';
+import { FILTER, filterOpaque } from '../layout.js';
 
 const QUAD_VS = /* glsl */ `
 varying vec2 vUv;
@@ -412,7 +413,7 @@ export function createFlowViz(renderer, scene, app, flow, container) {
       o[4] = FLUID;
     },
   });
-  // filter: penampang memanjang di tengah chamber (medan 2D)
+  // filter: penampang memanjang pada kedalaman z (medan 3D)
   const filter = new FlowPlane({
     name: 'filter',
     U: [49, 0, 0],
@@ -424,16 +425,15 @@ export function createFlowViz(renderer, scene, app, flow, container) {
     trailH: 640,
     sample(x, y, z, o) {
       o[0] = o[1] = o[2] = 0;
-      o[3] = NaN;
-      if (flow.cell2(x, y) < 0) return void (o[4] = EMPTY);
-      flow.sample2(x, y, v3);
+      if (flow.cellF(x, y, z) < 0) return void (o[4] = filterOpaque(x, y, z) ? OBSTACLE : EMPTY);
+      flow.sampleF(x, y, z, v3);
       o[0] = v3[0];
       o[1] = v3[1];
-      o[2] = Math.hypot(v3[0], v3[1]);
+      o[2] = Math.hypot(v3[0], v3[1], v3[2]);
+      o[3] = flow.sampleAvgF(x, y, z);
       o[4] = FLUID;
     },
   });
-  filter.setOrigin(0.5, 0, -7.5);
   const planes = [tankH, tankV, filter];
   for (const p of planes) scene.add(p.mesh);
 
@@ -463,10 +463,13 @@ export function createFlowViz(renderer, scene, app, flow, container) {
     tankH.mesh.visible = on && V.planeOn && FV.orient === 'h';
     tankV.mesh.visible = on && V.planeOn && FV.orient === 'v';
     filter.mesh.visible = on && V.filterPlane;
-    const moved = tankH.setOrigin(0.5, Math.min(app.sliceY, 29), 0.5) | tankV.setOrigin(0.5, 0, Math.max(0.8, Math.min(24.2, FV.sliceZ)));
+    const moved =
+      tankH.setOrigin(0.5, Math.min(app.sliceY, 29), 0.5) |
+      tankV.setOrigin(0.5, 0, Math.max(0.8, Math.min(24.2, FV.sliceZ))) |
+      filter.setOrigin(0.5, 0, FILTER.z0 + Math.max(0.3, Math.min(9.7, FV.filterZ)));
     const visible = planes.filter((p) => p.mesh.visible);
     const useAvg = FV.value === 'avg';
-    const key = `${FV.value}|${visible.map((p) => p.name).join()}|${Math.round(S.HT * 4)}`;
+    const key = `${FV.value}|${visible.map((p) => p.name).join()}|${[S.HT, S.H1, S.H2, S.H3, S.HP].map((x) => Math.round(x * 4)).join()}`;
     const now = performance.now();
     if (visible.length && (moved || key !== lastKey || (flow.version !== lastVersion && now - lastRefresh > 90))) {
       for (const p of visible) p.refresh(useAvg, simSinceRefresh);

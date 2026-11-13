@@ -45,7 +45,7 @@ export const app = {
   /** Tinggi bidang potong mendatar (cm). */
   sliceY: 14,
   /** Visualisasi CFD: arah bidang, posisi bidang tegak, palet, nilai peta, skala, animasi. */
-  FV: { orient: 'h', sliceZ: 12.5, cmap: 'turbo', value: 'inst', vmax: 0, mapAlpha: 0.9, anim: 1.5, fogMode: 'fast', fogDensity: 0.6 },
+  FV: { orient: 'h', sliceZ: 12.5, filterZ: 5, cmap: 'turbo', value: 'inst', vmax: 0, mapAlpha: 0.9, anim: 1.5, fogMode: 'fast', fogDensity: 0.6 },
   glassTint: 0.5,
   /** Kualitas grafis: 'a' otomatis, '0' tinggi, '2' sedang, '3' hemat. */
   quality: 'a',
