@@ -45,6 +45,7 @@ src/
   main.js               titik masuk: loop utama, perakitan modul
   state.js              state aplikasi bersama + event bus kecil
   sim.js                integrator langkah tetap (0,02 dtk) + riwayat grafik
+  settings.js           simpan/muat pengaturan (localStorage) + validasi skema
   layout.js             posisi batu, duckbill, wavemaker, pipa (dipakai render dan CFD)
   physics/
     constants.js        konstanta & geometri tank (CGS)
@@ -65,6 +66,14 @@ src/
   ui/                   kontrol, metrik/status, grafik, listrik
 tests/                  Vitest: regresi hidrolik vs versi 1, solver Poisson, engine CFD
 ```
+
+## Pengaturan tersimpan
+
+Semua pengaturan (parameter tank, tampilan, peta arus, kualitas grafis, tabel listrik) disimpan otomatis di
+`localStorage` browser, per perangkat. Status listrik, jeda, dan grup menu yang terbuka sengaja tidak disimpan.
+Tombol **Reset** hanya mengulang simulasi dengan pengaturan yang sedang dipakai; tombol **Kembalikan ke bawaan**
+(di bawah panel kontrol) menghapus semua pengaturan tersimpan. Data tersimpan divalidasi ketat (`src/settings.js`),
+sehingga data rusak/versi lama tidak membuat aplikasi error.
 
 ## Catatan model
 

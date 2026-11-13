@@ -46,6 +46,8 @@ export const app = {
   /** Visualisasi CFD: arah bidang, posisi bidang tegak, palet, nilai peta, skala, animasi. */
   FV: { orient: 'h', sliceZ: 12.5, cmap: 'turbo', value: 'inst', vmax: 0, mapAlpha: 0.9, anim: 1.5 },
   glassTint: 0.5,
+  /** Kualitas grafis: 'a' otomatis, '0' tinggi, '2' sedang, '3' hemat. */
+  quality: 'a',
   /** Statistik arus dari worker. */
   flowStats: { dead: 0, weak: 0, mean: 0, bottom: 0 },
 };

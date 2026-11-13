@@ -154,12 +154,13 @@ export function buildControls(h) {
     ['2', 'Sedang'],
     ['3', 'Hemat'],
   ], (val) => {
+    app.quality = val;
     if (val === 'a') h.setAutoQuality(true);
     else {
       h.setAutoQuality(false);
       h.setQuality(+val);
     }
-  });
+  }).value = app.quality;
 
   for (const t of TG) {
     const c = el('input', { type: 'checkbox', id: 't_' + t.id });
@@ -262,7 +263,7 @@ export function buildControls(h) {
   {
     const g7 = gs[7];
     const first = g7.querySelector('label.row');
-    const dark = el('input', { type: 'checkbox', id: 't_dark' });
+    const dark = el('input', { type: 'checkbox', id: 't_dark', checked: app.LOOK.dark });
     g7.insertBefore(el('label', { className: 'tg' }, [dark, el('span', { textContent: 'Lampu ruangan mati (mode gelap)' })]), first);
     dark.addEventListener('change', () => {
       app.LOOK.dark = dark.checked;
@@ -278,7 +279,7 @@ export function buildControls(h) {
       app.LOOK.skim = v;
       h.updElec();
     }, first).value = app.LOOK.skim;
-    const cp = el('input', { type: 'color', value: app.LOOK.bgc, style: 'display:none', ariaLabel: 'Warna latar' });
+    const cp = el('input', { type: 'color', value: app.LOOK.bgc, style: app.LOOK.bg === 'custom' ? '' : 'display:none', ariaLabel: 'Warna latar' });
     selectRow(g7, 'Latar belakang tank', 'bgsel', [
       ['black', 'Hitam doff'],
       ['white', 'Putih doff'],
@@ -375,16 +376,32 @@ export function buildControls(h) {
     app.paused = !app.paused;
     $('bPause').textContent = app.paused ? 'Lanjut' : 'Jeda';
   });
+  // Reset = ulang simulasi (level air, siphon, riwayat) dengan pengaturan yang sedang dipakai
   $('bReset').addEventListener('click', () => {
     h.resetFlow();
-    resetState();
+    const vol = app.volS;
+    app.P.on = true;
+    resetState(app.P);
+    app.S.pend = (vol - app.volS) * 1000; // pertahankan volume air pilihan pengguna
+    app.volS = vol;
     app.tOn = 0;
-    app.SPD = 3;
     app.paused = false;
     $('bPause').textContent = 'Jeda';
     h.rebuildSiphon();
     syncUI();
   });
 
-  return { syncUI, applyView, U };
+  /* info penyimpanan + kembalikan ke bawaan */
+  const savedTxt = el('span', { textContent: 'Pengaturan tersimpan otomatis di browser ini.' });
+  const bDefault = el('button', { textContent: 'Kembalikan ke bawaan', id: 'bDefaults' });
+  bDefault.addEventListener('click', () => {
+    if (window.confirm('Kembalikan SEMUA pengaturan (tank, tampilan, tabel listrik) ke bawaan? Halaman akan dimuat ulang.')) h.resetSettings();
+  });
+  root.append(el('div', { className: 'saveinfo' }, [savedTxt, bDefault]));
+  function markSaved() {
+    const t = new Date();
+    savedTxt.textContent = `Pengaturan tersimpan otomatis di browser ini · ${String(t.getHours()).padStart(2, '0')}.${String(t.getMinutes()).padStart(2, '0')}`;
+  }
+
+  return { syncUI, applyView, markSaved, U };
 }

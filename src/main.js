@@ -2,17 +2,32 @@
  * Titik masuk aplikasi: rakit simulasi hidrolik, mesin arus (worker), dunia 3D, dan UI.
  */
 import './styles.css';
-import { app, on } from './state.js';
+import { app, on, resetState } from './state.js';
 import { advance } from './sim.js';
 import { FlowClient } from './cfd/client.js';
 import { buildControls } from './ui/controls.js';
 import { buildMetrics } from './ui/metrics.js';
-import { buildElectricity } from './ui/electricity.js';
+import { buildElectricity, EL } from './ui/electricity.js';
+import { loadSettings, saveSettings, clearSettings, applySettings } from './settings.js';
 import { drawCharts } from './ui/charts.js';
 import { $ } from './util/format.js';
 
 const view = $('view');
 let world = null;
+
+/* pengaturan tersimpan: diterapkan sebelum UI, dunia 3D, dan simulasi dibangun */
+{
+  const saved = loadSettings(EL);
+  if (saved) {
+    applySettings(app, EL, saved);
+    resetState(app.P); // kondisi awal sesuai parameter tersimpan (mis. overflow box)
+    const vol = saved.top.volS;
+    if (vol !== undefined) {
+      app.S.pend = (vol - app.volS) * 1000; // volume air pilihan pengguna
+      app.volS = vol;
+    }
+  }
+}
 
 const flow = new FlowClient(app);
 
@@ -33,7 +48,7 @@ async function initWorld() {
 await initWorld();
 flow.start();
 
-let autoQuality = true;
+let autoQuality = app.quality === 'a';
 const hooks = {
   rebuildSiphon: () => world?.rebuildSiphon(),
   applyView: () => world?.applyView(),
@@ -43,6 +58,12 @@ const hooks = {
   setAutoQuality: (v) => (autoQuality = v),
   resetFlow: () => (flow.resetNext = true),
   updElec: () => elec.update(),
+  resetSettings: () => {
+    saveEnabled = false;
+    clearTimeout(saveTimer);
+    clearSettings();
+    location.reload();
+  },
 };
 const elec = buildElectricity();
 const metrics = buildMetrics();
@@ -56,6 +77,7 @@ on('siphon-dirty', () => (siphonDirty = true));
 document.querySelectorAll('#vbtn button[data-v]').forEach((b) => b.addEventListener('click', () => world?.setView(b.dataset.v)));
 
 if (world) {
+  if (!autoQuality) world.setQuality(+app.quality);
   world.rebuildSiphon();
   window.addEventListener('resize', world.resize);
   new ResizeObserver(world.resize).observe(view);
@@ -65,6 +87,28 @@ if (world) {
 ui.applyView();
 ui.syncUI();
 metrics.update();
+
+/* simpan otomatis (debounce 400 ms) setiap ada perubahan di panel, dan saat halaman ditinggalkan */
+let saveEnabled = true;
+let saveTimer = 0;
+function persist() {
+  if (saveEnabled && saveSettings(app, EL)) ui.markSaved();
+}
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(persist, 400);
+}
+for (const ev of ['input', 'change']) $('panel').addEventListener(ev, scheduleSave);
+$('panel').addEventListener('click', (e) => {
+  if (e.target.closest('button') && e.target.id !== 'bDefaults') scheduleSave();
+});
+$('bFlow')?.addEventListener('click', scheduleSave);
+const flush = () => {
+  clearTimeout(saveTimer);
+  persist();
+};
+window.addEventListener('pagehide', flush);
+document.addEventListener('visibilitychange', () => document.hidden && flush());
 elec.update();
 drawCharts();
 

@@ -50,10 +50,26 @@ export function buildElectricity() {
   }
   root.append(tb);
   root.append(el('label', { className: 'row', textContent: 'Tarif PLN per kWh', htmlFor: 'tarifSel' }));
-  const sel = el('select', { id: 'tarifSel', style: 'flex:1;min-width:0' }, TARIF.map(([v, t]) => el('option', { value: v, textContent: t })));
-  const ti = num(EL.tarif, 0.01, (x) => (EL.tarif = x), true);
+  const opts = TARIF.map(([v, t]) => el('option', { value: v, textContent: t }));
+  opts.push(el('option', { value: 'custom', textContent: 'Tarif lain (isi manual)' }));
+  const sel = el('select', { id: 'tarifSel', style: 'flex:1;min-width:0' }, opts);
+  const syncSel = () => (sel.value = TARIF.some(([v]) => v === EL.tarif) ? String(EL.tarif) : 'custom');
+  const ti = num(
+    EL.tarif,
+    0.01,
+    (x) => {
+      EL.tarif = x;
+      syncSel();
+    },
+    true,
+  );
   ti.ariaLabel = 'Tarif per kWh';
+  syncSel();
   sel.addEventListener('change', () => {
+    if (sel.value === 'custom') {
+      ti.focus();
+      return;
+    }
     EL.tarif = +sel.value;
     ti.value = EL.tarif;
     update();
