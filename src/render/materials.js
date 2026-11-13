@@ -6,6 +6,11 @@
  * melihat objek opaque: kaca depan akan menyembunyikan pipa bening, sekat, dan kaca
  * belakang. Sebagai gantinya dipakai alpha blending + "glassy": alpha dinaikkan sebesar
  * luminans pantulan specular, sehingga pantulan tetap terlihat di kaca yang hampir bening.
+ *
+ * Kaca tank memakai varian "pane": warna kaca mengikuti panjang lintasan cahaya di dalam kaca
+ * (Beer–Lambert) — bening bila dilihat tegak lurus, makin hijau bila dilihat miring — dan
+ * pantulan ditambahkan utuh (bukan ikut diredam alpha). Ini yang membuat kaca terlihat hidup
+ * tanpa perlu garis rangka di tiap tepi.
  */
 import * as THREE from 'three';
 
@@ -21,14 +26,30 @@ export const shaderQuality = { caustics: true };
 
 const std = (o) => new THREE.MeshStandardMaterial(o);
 
-function glassy(mat) {
+const GLASSY_GLSL =
+  'diffuseColor.a = clamp( diffuseColor.a + dot( reflectedLight.directSpecular + reflectedLight.indirectSpecular, vec3( 0.2126, 0.7152, 0.0722 ) ), 0.0, 1.0 );\n';
+
+/**
+ * Lembar kaca: opacity = serapan saat dilihat tegak lurus; lintasan miring lebih panjang
+ * (1/cos θ, dibatasi) sehingga serapannya naik. Keluaran = (warna kaca × serapan + pantulan),
+ * dengan alpha = serapan + luminans pantulan → pantulan tidak ikut diredam.
+ */
+const PANE_GLSL = /* glsl */ `
+{
+  float gNdV = abs( dot( normalize( normal ), normalize( vViewPosition ) ) );
+  float gAbs = 1.0 - pow( 1.0 - diffuseColor.a, 1.0 / max( gNdV, 0.17 ) );
+  float gSpec = dot( totalSpecular, vec3( 0.2126, 0.7152, 0.0722 ) );
+  float gOut = clamp( gAbs + gSpec, 0.0, 1.0 );
+  outgoingLight = ( ( totalDiffuse + totalEmissiveRadiance ) * gAbs + totalSpecular ) / max( gOut, 1e-4 );
+  diffuseColor.a = gOut;
+}
+`;
+
+function glassy(mat, pane = false) {
   mat.onBeforeCompile = (sh) => {
-    sh.fragmentShader = sh.fragmentShader.replace(
-      '#include <opaque_fragment>',
-      'diffuseColor.a = clamp( diffuseColor.a + dot( reflectedLight.directSpecular + reflectedLight.indirectSpecular, vec3( 0.2126, 0.7152, 0.0722 ) ), 0.0, 1.0 );\n#include <opaque_fragment>',
-    );
+    sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', (pane ? PANE_GLSL : GLASSY_GLSL) + '#include <opaque_fragment>');
   };
-  mat.customProgramCacheKey = () => 'glassy';
+  mat.customProgramCacheKey = () => (pane ? 'glassPane' : 'glassy');
   return mat;
 }
 
@@ -75,10 +96,15 @@ totalEmissiveRadiance += vec3(0.55, 0.8, 1.0) * cau(vWp.xz * 0.065, uT * 0.55) *
 
 export function createMaterials(tex) {
   const M = {
-    glass: glassy(std({ color: 0x9fd0c6, roughness: 0.03, metalness: 0, transparent: true, depthWrite: false, envMapIntensity: 1.1 })),
-    baffle: glassy(std({ color: 0x4f8799, roughness: 0.05, metalness: 0, transparent: true, depthWrite: false })),
-    edge: new THREE.LineBasicMaterial({ color: 0x1c5a4e, transparent: true, opacity: 0.9 }),
-    gEdge: std({ color: 0x2a8f76, roughness: 0.25, metalness: 0, transparent: true, opacity: 0.92 }),
+    glass: glassy(std({ color: 0x8cc7b8, roughness: 0.03, metalness: 0, transparent: true, depthWrite: false, envMapIntensity: 1.6 }), true),
+    baffle: glassy(std({ color: 0x5f9aa6, roughness: 0.05, metalness: 0, transparent: true, depthWrite: false, envMapIntensity: 0.8 }), true),
+    // garis tepi tipis: hanya untuk overflow box akrilik
+    edge: new THREE.LineBasicMaterial({ color: 0x1c5a4e, transparent: true, opacity: 0.35 }),
+    // tepi potong kaca: hijau zamrud yang sedikit berpendar (cahaya merambat di dalam kaca) + kilau
+    gEdge: glassy(
+      std({ color: 0x1f8a70, emissive: 0x0a4034, emissiveIntensity: 0.5, roughness: 0.12, metalness: 0, transparent: true, opacity: 0.62, depthWrite: false, envMapIntensity: 0.9 }),
+      true,
+    ),
     sil: std({ color: 0x15181a, roughness: 0.6 }),
     water: std({ color: 0x2a9be0, roughness: 0.15, metalness: 0, transparent: true, opacity: 0.38, depthWrite: false, envMapIntensity: 0.15 }),
     waterF: std({ color: 0x46b6c6, roughness: 0.15, metalness: 0, transparent: true, opacity: 0.33, depthWrite: false, envMapIntensity: 0.15 }),
@@ -86,7 +112,7 @@ export function createMaterials(tex) {
     surf: glassy(
       std({ color: 0xa6dcfa, roughness: 0.04, metalness: 0, opacity: 0.28, transparent: true, side: THREE.DoubleSide, depthWrite: false, envMapIntensity: 0.9 }),
     ),
-    wl: new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75 }),
+    wl: new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 }),
     pvc: std({ color: 0xf2f2ec, roughness: 0.4, metalness: 0 }),
     pvc2: std({ color: 0xf2f2ec, roughness: 0.4, metalness: 0, side: THREE.DoubleSide }),
     pvcG: std({ color: 0x8e979c, roughness: 0.45, metalness: 0 }),
@@ -133,8 +159,12 @@ export function createMaterials(tex) {
   return M;
 }
 
-/** Kepekatan warna kaca: transmisi efektif versi lama = 0,97 − 0,4·tint (kaca) dan 0,92 − 0,62·tint (sekat). */
+/**
+ * Kepekatan warna kaca. opacity = serapan saat dilihat tegak lurus; dilihat miring serapannya
+ * naik sendiri (lihat PANE_GLSL), jadi nilainya jauh lebih kecil daripada versi lama yang rata.
+ */
 export function applyGlassTint(M, tint) {
-  M.glass.opacity = 0.03 + 0.4 * tint;
-  M.baffle.opacity = 0.08 + 0.62 * tint;
+  M.glass.opacity = 0.012 + 0.15 * tint;
+  M.baffle.opacity = 0.03 + 0.26 * tint;
+  M.gEdge.opacity = 0.42 + 0.4 * tint;
 }

@@ -13,6 +13,7 @@ import { buildStudies } from './ui/studies.js';
 import { drawCharts } from './ui/charts.js';
 import { buildDiagnostics } from './ui/diagnostics.js';
 import { buildAnalysis } from './ui/analysis.js';
+import { buildClock } from './ui/clock.js';
 import { toast } from './ui/toast.js';
 import { diag, logEvent, errorText, installGlobalHandlers } from './diag.js';
 import { $ } from './util/format.js';
@@ -121,6 +122,17 @@ for (const id of ['panel', 'vbtn']) {
   });
 }
 logEvent('info', `Halaman dimuat · CFD ${flow.mode} · 3D ${world ? 'ok' : 'gagal'}`);
+
+/* jam simulasi di tampilan 3D; ketuk = ganti kecepatan simulasi */
+const clock = buildClock({
+  flow,
+  onSpeed: (v) => {
+    app.SPD = v;
+    ui.syncUI();
+    scheduleSave();
+    hooks.notify(`Kecepatan simulasi ${v}×`);
+  },
+});
 
 /* tab Analisis: saran otomatis, titik seimbang, uji pulsa, laporan untuk Claude */
 const analysisUI = buildAnalysis(ui.sections.analisis, {
@@ -293,7 +305,10 @@ function frame(now) {
     fpsT = 0;
   }
 
-  const simdt = guarded('Simulasi', () => advance(real, ui.syncUI));
+  // waktu simulasi mengikuti jam nyata sampai 4 fps (dulu dibatasi 0,05 dtk/frame, sehingga di HP
+  // yang berjalan < 20 fps simulasi diam-diam lebih lambat dari kecepatan yang dipilih)
+  const simdt = guarded('Simulasi', () => advance(Math.min(0.25, raw), ui.syncUI));
+  clock.frame();
   guarded('CFD', () => flow.tick(real, simdt));
   if (world) {
     if (siphonDirty && now - siphonAt > 90) {
@@ -315,6 +330,7 @@ function frame(now) {
     guarded('Metrik', () => metrics.update());
     ui.setDyeStatus(flow.dyeStatus());
     diagUI.update();
+    clock.update(uiDt);
     guarded('Analisis', () => analysisUI.update(uiDt));
     if (elecTick++ % 5 === 0) elec.update();
   }

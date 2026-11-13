@@ -65,13 +65,14 @@ export function createWorld(container, app, flow) {
    * Env map dipasang langsung ke material (bukan scene.environment) karena three r163+
    * mengabaikan envMapIntensity per material bila memakai scene.environment.
    */
+  for (const k of ['glass', 'baffle', 'gEdge']) M[k].userData.env = ctx.glassEnv; // pantulan jendela hanya di kaca
   const envMats = new Set();
   function attachEnv(root) {
     root.traverse((o) => {
       const mats = o.material ? [].concat(o.material) : [];
       for (const m of mats) {
         if (m.isMeshStandardMaterial && !envMats.has(m)) {
-          m.envMap = envTex;
+          m.envMap = m.userData.env || envTex;
           m.userData.e0 = m.envMapIntensity;
           m.needsUpdate = true;
           envMats.add(m);

@@ -58,7 +58,7 @@ src/
     client.js           penyusun pesan + sampling medan untuk jejak partikel
   render/
     context.js          renderer, kamera, lampu, environment
-    materials.js        material (kaca "glassy", kaustik)
+    materials.js        material (kaca: serapan Beer–Lambert + pantulan, kaustik)
     geom.js             helper geometri + StaticBatch (penggabung draw call)
     world.js            perakit scene + update per frame + kualitas
     flowviz.js          bidang potong CFD: peta warna + garis arus GPU
@@ -82,6 +82,13 @@ mengisi tank, umur air & ruang mati, ATO & salinitas lokal, kapas mampet, peta z
 aliran di filter). Studi mengatur parameter, tampilan, dan kamera, menampilkan
 panduan "yang perlu diperhatikan", dan mengembalikan pengaturan pengguna saat diakhiri — selama studi berjalan,
 pengaturan tersimpan tidak ditimpa (`src/ui/studies.js`).
+
+**Jam simulasi** (pojok kiri atas tampilan 3D) menampilkan waktu simulasi sejak Reset dan berjalan mengikuti
+kecepatan simulasi; jarumnya berputar sekali per menit simulasi. Ketuk jam untuk mengganti kecepatan
+(1× → 3× → 10× → 20×). Baris kecil di bawahnya hanya muncul bila ada yang tertinggal: `nyata ±N×` bila perangkat
+tidak sanggup mengejar kecepatan yang dipilih, dan `arus tertinggal mm:ss (N%)` bila simulasi arus (CFD), yang dihitung
+terpisah, berjalan lebih lambat dari jam (wajar pada kecepatan tinggi). Simulasi hidrolik kini mengikuti jam nyata sampai
+4 fps (`src/ui/clock.js`, `src/sim.js`).
 
 Kontrol di tab **Arus** tidak pernah dikunci. Bila tampilannya sedang mati (kontrol tampak redup), mengubah kontrol
 itu langsung menyalakan tampilan yang dibutuhkan (mis. memilih besaran "Umur air" menyalakan kabut 3D, menggeser tinggi
@@ -167,4 +174,8 @@ sehingga data rusak/versi lama tidak membuat aplikasi error.
   - Batasan: isotermal (tanpa stratifikasi suhu), penguapan tidak dimodelkan sebagai aliran (studi ATO menurunkan level
     chamber pompa secara manual), kisi kasar (1–1,5 cm) sehingga lapisan batas tidak teresolusi, dan pada perangkat lambat
     waktu CFD bisa tertinggal dari waktu hidrolik.
+- **Kaca**: tanpa garis rangka di tepi. Warna kaca mengikuti panjang lintasan cahaya di dalam kaca (bening bila dilihat
+  tegak lurus, menghijau bila dilihat miring), pantulan ditambahkan utuh dari lingkungan pantulan khusus kaca
+  (jendela berkisi; dipisah supaya pencahayaan benda lain tidak berubah), tepi atas dipoles membulat dan berpendar
+  hijau, muka potong di sudut dan alas. Lihat `src/render/materials.js` dan `src/render/scene/tank.js`.
 - Angka adalah acuan untuk dikalibrasi saat uji air tawar, bukan pengganti uji itu.

@@ -6,7 +6,8 @@ import { app } from './state.js';
 import { step } from './physics/hydraulics.js';
 import { PHYS_DT } from './physics/constants.js';
 
-const MAX_STEPS_PER_FRAME = 120;
+/** Cukup untuk 20× pada 4 fps (0,25 dtk × 20 = 5 dtk simulasi = 250 langkah); satu langkah hanya beberapa mikrodetik. */
+const MAX_STEPS_PER_FRAME = 300;
 let acc = 0;
 let histAcc = 0;
 

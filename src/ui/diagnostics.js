@@ -126,7 +126,7 @@ export function buildDiagnostics(ctx) {
   /* ---------- lencana error di tampilan 3D ---------- */
   const badge = el('button', { id: 'diagBadge', hidden: true, title: 'Salin laporan diagnostik' });
   badge.addEventListener('click', copy);
-  $('view')?.append(badge);
+  ($('hud') || $('view'))?.append(badge);
   const updBadge = () => {
     badge.hidden = diag.errors === 0;
     badge.textContent = `⚠ ${diag.errors} error · ketuk untuk salin laporan`;

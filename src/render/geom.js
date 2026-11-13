@@ -59,6 +59,52 @@ export function elbowGeo(x, cy, cz, R, r, front) {
   return g;
 }
 
+/**
+ * Tepi kaca yang dipoles membulat ("pencil edge"): setengah elips selebar kaca, memanjang
+ * di sumbu x atau z (mana yang lebih panjang), puncaknya di y + h. Normalnya halus sehingga
+ * menangkap kilau yang bergeser saat kamera diputar.
+ */
+export function pencilEdgeGeo(x0, x1, z0, z1, y, h, seg = 6) {
+  const alongX = x1 - x0 >= z1 - z0;
+  const [l0, l1] = alongX ? [x0, x1] : [z0, z1];
+  const [c0, c1] = alongX ? [z0, z1] : [x0, x1];
+  const half = 0.5 * (c1 - c0);
+  const pos = [];
+  const nor = [];
+  const idx = [];
+  for (let i = 0; i <= seg; i++) {
+    const a = (Math.PI * i) / seg;
+    const cu = -Math.cos(a);
+    const su = Math.sin(a);
+    const c = 0.5 * (c0 + c1) + cu * half;
+    const yy = y + su * h;
+    let nc = cu / half;
+    let ny = su / h;
+    const l = Math.hypot(nc, ny) || 1;
+    nc /= l;
+    ny /= l;
+    for (const L of [l0, l1]) {
+      if (alongX) {
+        pos.push(L, yy, c);
+        nor.push(0, ny, nc);
+      } else {
+        pos.push(c, yy, L);
+        nor.push(nc, ny, 0);
+      }
+    }
+  }
+  for (let i = 0; i < seg; i++) {
+    const a = i * 2;
+    if (alongX) idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+    else idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setIndex(idx);
+  return g;
+}
+
 export function mesh(geo, mat, parent, opts = {}) {
   const m = new THREE.Mesh(geo, mat);
   if (opts.cast) m.castShadow = true;

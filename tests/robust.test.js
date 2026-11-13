@@ -113,3 +113,16 @@ describe('skala warna pewarna', () => {
     expect(legendTicks('dye', 0, 12).map((t) => t.text)).toEqual(['0%', '6,0%', '12%']);
   });
 });
+
+describe('jam simulasi', () => {
+  it('format waktu dan siklus kecepatan', async () => {
+    const { formatSimTime, nextSpeed } = await import('../src/ui/clock.js');
+    expect(formatSimTime(0)).toBe('00:00');
+    expect(formatSimTime(75.9)).toBe('01:15');
+    expect(formatSimTime(3599)).toBe('59:59');
+    expect(formatSimTime(3723)).toBe('1:02:03');
+    expect(formatSimTime(-5)).toBe('00:00');
+    expect([1, 3, 10, 20].map(nextSpeed)).toEqual([3, 10, 20, 1]);
+    expect(nextSpeed(6)).toBe(10); // nilai slider di antara langkah → langkah berikutnya
+  });
+});
