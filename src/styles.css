@@ -1,0 +1,362 @@
+:root {
+  --bg: #f6f5f1;
+  --card: #fff;
+  --ink: #1b1b1a;
+  --mut: #6b6a65;
+  --bd: rgba(0, 0, 0, 0.11);
+  --acc: #2a78d6;
+  --sky1: #dce9f1;
+  --sky2: #f3f1ea;
+  --ok: #0ca30c;
+  --bad: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151514;
+    --card: #1f1f1e;
+    --ink: #f0efec;
+    --mut: #a3a29b;
+    --bd: rgba(255, 255, 255, 0.13);
+    --sky1: #1b2a35;
+    --sky2: #171716;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+}
+header {
+  padding: 12px 14px 2px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+h1 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0;
+}
+header p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--mut);
+}
+#app {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'view' 'panel' 'charts';
+  gap: 10px;
+  padding: 10px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+#viewWrap {
+  grid-area: view;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg);
+  padding-bottom: 6px;
+}
+#panel {
+  grid-area: panel;
+}
+#charts {
+  grid-area: charts;
+}
+@media (min-width: 960px) {
+  #app {
+    grid-template-columns: minmax(0, 1.55fr) minmax(340px, 1fr);
+    grid-template-areas: 'view panel' 'charts panel';
+    align-items: start;
+  }
+  #viewWrap {
+    position: static;
+  }
+  #panel {
+    max-height: calc(100vh - 20px);
+    overflow: auto;
+    position: sticky;
+    top: 10px;
+  }
+}
+#view {
+  position: relative;
+  height: 44vh;
+  min-height: 280px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--bd);
+  background: linear-gradient(var(--sky1), var(--sky2));
+}
+@media (min-width: 960px) {
+  #view {
+    height: 60vh;
+  }
+}
+#view canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+#view.dark {
+  background: linear-gradient(#05070a, #0b0e12);
+}
+#status {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 70%;
+  backdrop-filter: blur(4px);
+  background: rgba(127, 127, 127, 0.2);
+}
+#vbtn {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+#vbtn button {
+  padding: 5px 8px;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.75);
+  color: #1b1b1a;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+#hint {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  font-size: 10px;
+  color: #333;
+  background: rgba(255, 255, 255, 0.6);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+#glError {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  font-size: 13px;
+}
+#glError[hidden] {
+  display: none;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.quick,
+.btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+button,
+select {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--bd);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+button:active {
+  transform: scale(0.97);
+}
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+button.on {
+  background: var(--ok);
+  color: #fff;
+  border-color: var(--ok);
+}
+button.off {
+  background: var(--bad);
+  color: #fff;
+  border-color: var(--bad);
+}
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.m {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 6px 8px;
+  min-width: 0;
+}
+.m span {
+  display: block;
+  font-size: 10.5px;
+  color: var(--mut);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.m b {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+details {
+  border-top: 1px solid var(--bd);
+  padding: 6px 0;
+}
+details:first-of-type {
+  border-top: none;
+}
+summary {
+  font-weight: 600;
+  font-size: 13.5px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+label.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+  margin: 9px 0 2px;
+}
+label.row b {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+input[type='range'] {
+  width: 100%;
+  margin: 0;
+  height: 26px;
+}
+.tg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  padding: 7px 0;
+}
+.tg input {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+h2 {
+  font-size: 13.5px;
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+canvas.ch {
+  width: 100%;
+  height: 170px;
+  display: block;
+}
+.lg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 10.5px;
+  color: var(--mut);
+  margin-top: 3px;
+}
+.lg i {
+  display: inline-block;
+  width: 12px;
+  height: 3px;
+  margin-right: 4px;
+  vertical-align: middle;
+  border-radius: 2px;
+}
+.lg i.dot {
+  background: var(--ink);
+  height: 7px;
+  width: 7px;
+  border-radius: 50%;
+}
+table.el {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+table.el th {
+  font-weight: 500;
+  color: var(--mut);
+  font-size: 11px;
+  text-align: right;
+  padding: 2px 3px;
+}
+table.el td {
+  padding: 3px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+table.el th:first-child,
+table.el td:first-child {
+  text-align: left;
+}
+input.num {
+  width: 56px;
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--bd);
+  background: var(--bg);
+  color: var(--ink);
+  text-align: right;
+}
+input.num.wide {
+  width: 92px;
+}
+input[type='color'] {
+  width: 100%;
+  height: 34px;
+  margin-top: 6px;
+  border: 1px solid var(--bd);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.note {
+  font-size: 11px;
+  color: var(--mut);
+  line-height: 1.5;
+  margin: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  button:active {
+    transform: none;
+  }
+}

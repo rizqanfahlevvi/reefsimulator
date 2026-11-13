@@ -1,0 +1,24 @@
+{
+  "name": "reefsimulator",
+  "private": true,
+  "version": "2.0.0",
+  "description": "Simulasi 3D reef tank + back filter (hidrolik, CFD, render three.js)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  }
+}
