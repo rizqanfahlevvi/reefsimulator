@@ -4,15 +4,16 @@ import { skimmerActive, equilibriumLevel } from '../physics/hydraulics.js';
 import { GEO } from '../physics/constants.js';
 import { fmt, $, el } from '../util/format.js';
 
+/** [id, label, utama?] — metrik utama selalu tampil di atas tab, sisanya di tab Metrik. */
 const MET = [
-  ['mT', 'Level tank'],
+  ['mT', 'Level tank', true],
   ['mIn', 'Lewat surface skimmer'],
   ['mCup', 'Level dalam skimmer'],
   ['m12', 'Ch 1 kapas / Ch 2'],
   ['m3P', 'Ch 3 / Ch pompa'],
-  ['mQs', 'Debit siphon'],
-  ['mQr', 'Debit return'],
-  ['mPump', 'Status pompa'],
+  ['mQs', 'Debit siphon', true],
+  ['mQr', 'Debit return', true],
+  ['mPump', 'Status pompa', true],
   ['mV', 'Kecepatan di U-pipe'],
   ['mHp', 'Head pompa / statis'],
   ['mVol', 'Volume air sekarang'],
@@ -21,7 +22,8 @@ const MET = [
   ['mEnd', 'Ujung buang'],
   ['mTo', 'Sirkulasi tank'],
   ['mRes', 'Waktu kontak skimmer / bio'],
-  ['mDead', 'Zona mati (<1 cm/s)'],
+  ['mDead', 'Zona mati tank (<1 cm/s)', true],
+  ['mDeadF', 'Zona mati filter (<1 cm/s)', true],
   ['mFlow', 'Arus rata-rata / dasar'],
   ['mSal', 'Salinitas'],
   ['mAto', 'Air tawar dari ATO'],
@@ -32,14 +34,20 @@ const C_OK = '12,163,12';
 const C_WARN = '214,150,0';
 const C_BAD = '208,59,59';
 
+const KEY_ORDER = ['mT', 'mPump', 'mQs', 'mQr', 'mDead', 'mDeadF'];
+
 export function buildMetrics() {
   const root = $('metrics');
+  const keyRoot = $('metricsKey');
   const nodes = {};
-  for (const [id, label] of MET) {
+  const cards = {};
+  for (const [id, label, key] of MET) {
     const b = el('b', { id, textContent: '-' });
-    root.append(el('div', { className: 'm' }, [el('span', { textContent: label }), b]));
+    cards[id] = el('div', { className: 'm' + (key ? ' key' : '') }, [el('span', { textContent: label }), b]);
     nodes[id] = b;
+    if (!key || !keyRoot) root.append(cards[id]);
   }
+  if (keyRoot) for (const id of KEY_ORDER) keyRoot.append(cards[id]);
   // tulis ke DOM hanya bila teks berubah
   const cache = {};
   const set = (id, v) => {
@@ -106,9 +114,11 @@ export function buildMetrics() {
     set('mSal', fmt(salinity(), 1) + ' ppt');
     if (V.cfd) {
       set('mDead', fmt(flowStats.dead, 0) + '% · lemah ' + fmt(flowStats.weak, 0) + '%');
+      set('mDeadF', flowStats.fdead !== undefined ? fmt(flowStats.fdead, 0) + '% · rata ' + fmt(flowStats.fmean, 1) + ' cm/s' : '-');
       set('mFlow', fmt(flowStats.mean, 1) + ' / ' + fmt(flowStats.bottom, 1) + ' cm/s');
     } else {
       set('mDead', '-');
+      set('mDeadF', '-');
       set('mFlow', '-');
     }
     set('mAto', fmt(S.ato / 1000, 2) + ' L');

@@ -65,9 +65,19 @@ src/
     flowfog.js          kabut kecepatan 3D (volume rendering ray marching)
     colormaps.js        palet Turbo/Plasma/Viridis (GLSL + JS dari koefisien yang sama)
     scene/*.js          ruangan, tank, aquascape, ikan, peralatan, air, siphon, partikel, jejak, label
-  ui/                   kontrol, metrik/status, grafik, listrik
+  ui/                   kontrol + tab, metrik/status, grafik, listrik, studi terpandu
 tests/                  Vitest: regresi hidrolik vs versi 1, solver Poisson, engine CFD
 ```
+
+## Antarmuka
+
+Panel dibagi menjadi tab **Tank · Arus · Studi · Tampilan · Metrik · Listrik**; tombol cepat dan 6 metrik utama
+(termasuk zona mati tank & filter) selalu terlihat di atas tab. Semua grup tertutup saat halaman dimuat.
+
+Tab **Studi** berisi skenario sekali klik (uji padam, siphon putus, belum pasang pelampung, kapas mampet,
+peta zona mati, arah jet duckbill, aliran di filter). Studi mengatur parameter, tampilan, dan kamera, menampilkan
+panduan "yang perlu diperhatikan", dan mengembalikan pengaturan pengguna saat diakhiri — selama studi berjalan,
+pengaturan tersimpan tidak ditimpa (`src/ui/studies.js`).
 
 ## Pengaturan tersimpan
 

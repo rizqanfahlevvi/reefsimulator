@@ -23,7 +23,7 @@ function freshApp() {
     NZL: { yaw: 20, pitch: 15 },
     WM: { q: 1000, yaw: 0, pitch: 0, y: 16 },
     LOOK: { dark: false, skim: 'air', bg: 'black', bgc: '#1e3a5f', lamp: 'mix', li: 80 },
-    FV: { orient: 'h', sliceZ: 12.5, cmap: 'turbo', value: 'inst', vmax: 0, mapAlpha: 0.9, anim: 1.5, fogMode: 'fast', fogDensity: 0.6 },
+    FV: { orient: 'h', sliceZ: 12.5, filterZ: 5, cmap: 'turbo', value: 'inst', vmax: 0, mapAlpha: 0.9, anim: 1.5, fogMode: 'fast', fogDensity: 0.6 },
     sliceY: 14,
     glassTint: 0.5,
     SPD: 3,
@@ -153,5 +153,43 @@ describe('pengaturan: simpan dan muat', () => {
     expect(loadSettings(freshEL(), broken)).toBeNull();
     expect(saveSettings(freshApp(), freshEL(), broken)).toBe(false);
     warn.mockRestore();
+  });
+});
+
+describe('studi terpandu', () => {
+  it('setiap studi menghasilkan pengaturan sah dan pengaturan pengguna kembali utuh', async () => {
+    const { STUDIES } = await import('../src/ui/studies.js');
+    expect(STUDIES.length).toBeGreaterThanOrEqual(6);
+    for (const def of STUDIES) {
+      const a = freshApp();
+      const el = freshEL();
+      a.P.qmax = 900; // pengaturan "pengguna"
+      a.LOOK.lamp = 'blue';
+      const before = JSON.stringify(snapshot(a, el));
+      const snap = JSON.parse(before);
+      def.setup(a);
+      def.action?.(a);
+      // nilai yang diubah studi tetap lolos validasi (tidak ada yang dibuang/dipotong)
+      const during = snapshot(a, el);
+      const clean = sanitize(JSON.parse(JSON.stringify(during)), ['pump', 'led']);
+      for (const g of ['P', 'V', 'FV', 'LOOK', 'NZL', 'WM']) {
+        for (const [k, v] of Object.entries(during[g])) if (v !== undefined) expect(clean[g][k], `${def.id}.${g}.${k}`).toEqual(v);
+      }
+      // akhiri studi: kembalikan
+      applySettings(a, el, sanitize(snap, ['pump', 'led']));
+      expect(JSON.stringify(snapshot(a, el))).toBe(before);
+      expect(typeof def.watch).toBe('string');
+    }
+  });
+});
+
+describe('skema pengaturan', () => {
+  it('setiap kunci skema ada di state bawaan (agar studi/pemulihan selalu lengkap)', async () => {
+    const { SPEC } = await import('../src/settings.js');
+    const { app } = await import('../src/state.js');
+    for (const [g, keys] of Object.entries(SPEC)) {
+      const target = g === 'top' ? app : app[g];
+      for (const k of Object.keys(keys)) expect(target[k], `${g}.${k}`).not.toBeUndefined();
+    }
   });
 });

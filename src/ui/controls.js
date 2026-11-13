@@ -226,26 +226,8 @@ export function buildControls(h) {
     textContent:
       'Garis arus = jejak ribuan partikel yang terbawa arus pada bidang potong; warnanya mengikuti laju. Kabut 3D menampilkan laju di seluruh volume air sekaligus (paling berat untuk HP; turunkan kualitas grafis bila tersendat). Pola arus butuh ±30 detik simulasi untuk stabil setelah arah diubah. Model kisi 1,5 cm ini untuk membandingkan arah nozzle/wavemaker, bukan angka mutlak.',
   });
-  {
-    // susun ulang isi grup arus supaya berurutan secara logis
-    const g3 = gs[3];
-    const order = ['t_cfd', 't_planeOn', 'fvOrient', 's_sliceY', 's_sliceZ', 't_filterPlane', 's_filterZ', 't_fog', 'fvFogMode', 's_fogDensity', 'fvValue', 'fvCmap', 's_vmax', 's_mapAlpha', 's_anim', 't_tr3d', legend3d, 's_nyaw', 's_npit', 't_wm', 's_wq', 's_wyaw', 's_wpit', 's_wy', note3];
-    for (const item of order) {
-      if (typeof item !== 'string') {
-        g3.append(item);
-        continue;
-      }
-      const e = $(item);
-      if (e.type === 'checkbox') g3.append(e.closest('label'));
-      else {
-        const lab = g3.querySelector(`label[for="${item}"]`);
-        if (lab) g3.append(lab);
-        g3.append(e);
-      }
-    }
-  }
-
   /* preset tampilan */
+  let modeBtns = null;
   const STUDY = { fish: false, coral: false, lamp: false, room: false, label: false, cfd: true, planeOn: true, filterPlane: true, tr3d: false, flow: true };
   const FULL = { fish: true, coral: true, rock: true, sand: true, lamp: true, room: true, label: true, cfd: true, planeOn: false, filterPlane: false, tr3d: true };
   const setMode = (study) => {
@@ -262,6 +244,7 @@ export function buildControls(h) {
     };
     mk('Mode studi aliran', () => setMode(true));
     mk('Mode rencana lengkap', () => setMode(false));
+    modeBtns = b;
     gs[5].append(b);
   }
   // tombol cepat di tampilan 3D
@@ -287,7 +270,7 @@ export function buildControls(h) {
       app.LOOK.skim = v;
       h.updElec();
     }, first).value = app.LOOK.skim;
-    const cp = el('input', { type: 'color', value: app.LOOK.bgc, style: app.LOOK.bg === 'custom' ? '' : 'display:none', ariaLabel: 'Warna latar' });
+    const cp = el('input', { type: 'color', id: 'bgColor', value: app.LOOK.bgc, style: app.LOOK.bg === 'custom' ? '' : 'display:none', ariaLabel: 'Warna latar' });
     selectRow(g7, 'Latar belakang tank', 'bgsel', [
       ['black', 'Hitam doff'],
       ['white', 'Putih doff'],
@@ -359,6 +342,21 @@ export function buildControls(h) {
     b.className = p.on ? 'on' : 'off';
     $('lgBox').style.display = p.box ? '' : 'none';
     $('bBrkAll').textContent = p.n === 2 ? 'Putuskan semua' : 'Putuskan siphon';
+    // pilihan tampilan (dipakai saat studi dimulai/diakhiri)
+    const setv = (id, v) => {
+      const e = $(id);
+      if (e && e.value !== String(v)) e.value = String(v);
+    };
+    setv('fvOrient', app.FV.orient);
+    setv('fvValue', app.FV.value);
+    setv('fvCmap', app.FV.cmap);
+    setv('fvFogMode', app.FV.fogMode);
+    setv('sktype', app.LOOK.skim);
+    setv('bgsel', app.LOOK.bg);
+    setv('lampsel', app.LOOK.lamp);
+    setv('qual', app.quality);
+    if ($('t_dark')) $('t_dark').checked = app.LOOK.dark;
+    if ($('bgColor')) $('bgColor').style.display = app.LOOK.bg === 'custom' ? '' : 'none';
   }
 
   /* tombol cepat */
@@ -410,11 +408,89 @@ export function buildControls(h) {
   bDefault.addEventListener('click', () => {
     if (window.confirm('Kembalikan SEMUA pengaturan (tank, tampilan, tabel listrik) ke bawaan? Halaman akan dimuat ulang.')) h.resetSettings();
   });
-  root.append(el('div', { className: 'saveinfo' }, [savedTxt, bDefault]));
+  const saveInfo = el('div', { className: 'saveinfo' }, [savedTxt, bDefault]);
   function markSaved() {
     const t = new Date();
     savedTxt.textContent = `Pengaturan tersimpan otomatis di browser ini · ${String(t.getHours()).padStart(2, '0')}.${String(t.getMinutes()).padStart(2, '0')}`;
   }
 
-  return { syncUI, applyView, markSaved, U };
+  /* ================= tata letak: tab + grup ringkas ================= */
+  const LAYOUT = [
+    {
+      id: 'tank',
+      title: 'Tank',
+      groups: [
+        ['Air', ['s_vol', 's_disp']],
+        ['Pompa return & auto-off', ['s_spd', 's_qmax', 's_hmax', 's_rv', 't_fswHi', 't_fswLo']],
+        ['Siphon U-pipe', ['pipe', 'skt', 's_zd', 's_zin', 's_kb', 's_zrim', 's_sv', 't_venturi', 't_box']],
+        ['Filter & pengaman', ['s_clog', 't_hole', 't_ato']],
+      ],
+    },
+    {
+      id: 'arus',
+      title: 'Arus',
+      groups: [
+        ['Simulasi & jejak arus', ['t_cfd', 't_tr3d', legend3d, modeBtns, note3]],
+        ['Bidang potong (peta + garis arus)', ['t_planeOn', 'fvOrient', 's_sliceY', 's_sliceZ', 't_filterPlane', 's_filterZ', 's_mapAlpha', 's_anim']],
+        ['Kabut kecepatan 3D', ['t_fog', 'fvFogMode', 's_fogDensity']],
+        ['Warna & skala', ['fvValue', 'fvCmap', 's_vmax']],
+        ['Duckbill & wavemaker', ['s_nyaw', 's_npit', 't_wm', 's_wq', 's_wyaw', 's_wpit', 's_wy']],
+      ],
+    },
+    { id: 'studi', title: 'Studi', content: [] },
+    {
+      id: 'tampilan',
+      title: 'Tampilan',
+      groups: [
+        ['Ornamen', ['t_fish', 't_coral', 't_rock', 't_sand', 't_lamp', 't_room']],
+        ['Simulasi & grafis', ['s_sp', 'qual', 's_tint', 't_flow', 't_clear', 't_label']],
+        ['Skimmer, latar & lampu', ['t_dark', 'sktype', 'bgsel', 'bgColor', 'lampsel', 's_li']],
+      ],
+    },
+    { id: 'metrik', title: 'Metrik', content: [$('metricsCard')] },
+    { id: 'listrik', title: 'Listrik', content: [$('elec')] },
+  ];
+  const moveInto = (parent, item) => {
+    if (!item) return;
+    if (typeof item !== 'string') return parent.append(item);
+    const e = $(item);
+    if (!e) return;
+    if (e.type === 'checkbox') return parent.append(e.closest('label'));
+    const lab = root.querySelector(`label[for="${item}"]`);
+    if (lab) parent.append(lab);
+    parent.append(e);
+  };
+  const nav = el('div', { className: 'tabs', role: 'tablist', ariaLabel: 'Menu pengaturan' });
+  const sections = {};
+  const tabBtns = {};
+  for (const t of LAYOUT) {
+    const sec = el('section', { id: 'tab-' + t.id, role: 'tabpanel', hidden: true });
+    if (t.groups) {
+      const card = el('div', { className: 'card' });
+      for (const [title, items] of t.groups) {
+        const d = el('details', {}, [el('summary', { textContent: title })]);
+        for (const it of items) moveInto(d, it);
+        card.append(d);
+      }
+      sec.append(card);
+    }
+    for (const c of t.content || []) if (c) sec.append(c);
+    sections[t.id] = sec;
+    const btn = el('button', { className: 'tab', role: 'tab', textContent: t.title, id: 'tabbtn-' + t.id });
+    btn.addEventListener('click', () => showTab(t.id));
+    nav.append(btn);
+    tabBtns[t.id] = btn;
+  }
+  // grup lama kini kosong → buang, lalu pasang navigasi + panel tab
+  root.replaceChildren(nav, ...Object.values(sections), saveInfo);
+  function showTab(id) {
+    for (const [k, sec] of Object.entries(sections)) {
+      sec.hidden = k !== id;
+      tabBtns[k].setAttribute('aria-selected', String(k === id));
+      tabBtns[k].classList.toggle('active', k === id);
+    }
+  }
+  showTab('tank');
+
+  return { syncUI, applyView, markSaved, U, showTab, studiesRoot: sections.studi };
 }

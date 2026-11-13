@@ -8,7 +8,8 @@ import { FlowClient } from './cfd/client.js';
 import { buildControls } from './ui/controls.js';
 import { buildMetrics } from './ui/metrics.js';
 import { buildElectricity, EL } from './ui/electricity.js';
-import { loadSettings, saveSettings, clearSettings, applySettings } from './settings.js';
+import { loadSettings, saveSettings, clearSettings, applySettings, snapshot, sanitize } from './settings.js';
+import { buildStudies } from './ui/studies.js';
 import { drawCharts } from './ui/charts.js';
 import { $ } from './util/format.js';
 
@@ -92,7 +93,8 @@ metrics.update();
 let saveEnabled = true;
 let saveTimer = 0;
 function persist() {
-  if (saveEnabled && saveSettings(app, EL)) ui.markSaved();
+  // selama studi berjalan, pengaturan studi tidak disimpan (pengaturan pengguna tetap utuh)
+  if (saveEnabled && !study && saveSettings(app, EL)) ui.markSaved();
 }
 function scheduleSave() {
   clearTimeout(saveTimer);
@@ -108,6 +110,56 @@ const flush = () => {
   persist();
 };
 window.addEventListener('pagehide', flush);
+
+/* ================= studi terpandu ================= */
+let study = null;
+/** Ulang simulasi dengan parameter saat ini (volume air pilihan dipertahankan). */
+function restartSim() {
+  hooks.resetFlow();
+  const vol = app.volS;
+  app.P.on = true;
+  resetState(app.P);
+  app.S.pend = (vol - app.volS) * 1000;
+  app.volS = vol;
+  app.tOn = 0;
+  app.paused = false;
+  $('bPause').textContent = 'Jeda';
+}
+function refreshAll() {
+  world?.rebuildSiphon();
+  world?.applyGlass();
+  world?.applyBg();
+  ui.applyView();
+  ui.syncUI();
+  elec.update();
+  metrics.update();
+}
+function restoreSnap(snap) {
+  const s = sanitize(snap, EL.rows.map((r) => r.id));
+  if (s) applySettings(app, EL, s);
+}
+const studies = buildStudies(ui.studiesRoot, {
+  start(def) {
+    if (study) restoreSnap(study.snap); // berganti studi: kembali dulu ke pengaturan pengguna
+    flush(); // pastikan pengaturan pengguna terbaru tersimpan
+    study = { def, snap: JSON.parse(JSON.stringify(snapshot(app, EL))) };
+    def.setup(app);
+    restartSim();
+    def.action?.(app);
+    refreshAll();
+    if (def.view) world?.setView(def.view);
+    studies.show(def);
+  },
+  end() {
+    if (!study) return;
+    restoreSnap(study.snap);
+    study = null;
+    restartSim();
+    refreshAll();
+    world?.setView('iso');
+    studies.hide();
+  },
+});
 document.addEventListener('visibilitychange', () => document.hidden && flush());
 elec.update();
 drawCharts();

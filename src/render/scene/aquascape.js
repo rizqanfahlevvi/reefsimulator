@@ -5,21 +5,34 @@ import { StaticBatch, boxGeo, cylGeo } from '../geom.js';
 import { fbm, ridged, createRng } from '../../util/random.js';
 import { ROCKS } from '../../layout.js';
 
+/**
+ * Pasir: dasar (balok) + permukaan bergelombang.
+ *
+ * Anti z-fighting: semua sisi balok dimundurkan INSET dari bidang dalam kaca/permukaan air
+ * (x = 0,5 / 49,5, z = 0,5 / 24,5), dan puncak balok sedikit di bawah tepi permukaan pasir,
+ * supaya tidak ada dua permukaan yang berimpit (penyebab garis/bintik berkedip).
+ */
+const SAND_INSET = 0.03; // cm
+const SAND_EDGE_Y = 1.15; // tinggi tepi permukaan pasir
 export function buildSand(scene, M) {
   const sandG = new THREE.Group();
   scene.add(sandG);
   const b = new StaticBatch();
-  b.add(boxGeo(0.5, 49.5, 0, 1.0, 0.5, 24.5), M.sand, { cast: true });
-  // permukaan pasir bergelombang, landai ke kaca
-  const g = new THREE.PlaneGeometry(49, 24, 64, 32);
+  const s = SAND_INSET;
+  b.add(boxGeo(0.5 + s, 49.5 - s, 0, SAND_EDGE_Y - 0.04, 0.5 + s, 24.5 - s), M.sand, { cast: true });
+  // permukaan pasir bergelombang, landai ke kaca; mesh ±0,35 cm agar riak tidak menimbulkan moiré
+  const W = 49 - 2 * s;
+  const D = 24 - 2 * s;
+  const g = new THREE.PlaneGeometry(W, D, 140, 68);
   g.rotateX(-Math.PI / 2);
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
     const X = p.getX(i);
     const Z = p.getZ(i);
-    const e = Math.min(1, Math.min(24.5 - Math.abs(X), 12 - Math.abs(Z)) / 2);
-    const ripple = 0.06 * Math.sin(X * 1.7 + Math.sin(Z * 0.6) * 2) * e;
-    p.setY(i, 1.15 + 0.9 * e * fbm(X * 0.11 + 3, 0.5, Z * 0.11 + 7) + ripple);
+    const e = Math.min(1, Math.min(W / 2 - Math.abs(X), D / 2 - Math.abs(Z)) / 2);
+    // riak pasir lebar (λ ±6 cm) dan lembut
+    const ripple = 0.08 * Math.sin(X * 1.05 + Math.sin(Z * 0.45) * 1.6) * e * e;
+    p.setY(i, SAND_EDGE_Y + 0.9 * e * fbm(X * 0.11 + 3, 0.5, Z * 0.11 + 7) + ripple);
   }
   g.computeVertexNormals();
   g.translate(25, 0, 12.5);
