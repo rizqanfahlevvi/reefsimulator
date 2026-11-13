@@ -5,7 +5,8 @@ import { fmt, $, el } from '../util/format.js';
 import { COLORMAPS, COLORMAP_LABELS } from '../render/colormaps.js';
 
 const GROUPS = ['Air', 'Pompa return', 'Siphon U-pipe', 'Arus & visualisasi CFD', 'Filter dan pengaman', 'Ornamen', 'Tampilan dan simulasi', 'Skimmer, latar, dan lampu'];
-const OPEN_GROUPS = new Set([0, 1, 2, 3, 7]);
+/** Grup yang terbuka saat halaman dimuat (kosong = semua tertutup, panel ringkas). */
+const OPEN_GROUPS = new Set();
 
 /**
  * @param {object} h hooks: rebuildSiphon, applyView, applyGlass, applyBg, setQuality, setAutoQuality, resetFlow, updElec
