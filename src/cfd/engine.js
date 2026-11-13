@@ -16,7 +16,6 @@
  */
 import { T3, F2 } from './grid.js';
 import { PoissonSolver } from './poisson.js';
-import { speedColor } from './palette.js';
 
 const VMAX = 150; // batas kecepatan (cm/s) untuk stabilitas
 
@@ -368,31 +367,6 @@ export function createFlowEngine(post) {
     };
   }
 
-  const col = [0, 0, 0];
-  function slice(y, data) {
-    const j = Math.max(1, Math.min(jT, Math.floor(y / h) + 1));
-    for (let r = 0; r < nz; r++) {
-      const k = nz - r;
-      for (let i = 1; i <= nx; i++) {
-        const c = i + SY * j + SZ * k;
-        const q = (r * nx + i - 1) * 4;
-        if (sol[c]) {
-          data[q] = 40;
-          data[q + 1] = 40;
-          data[q + 2] = 46;
-          data[q + 3] = base[c] ? 120 : 0;
-        } else {
-          speedColor(avg[c], col);
-          data[q] = col[0] * 255;
-          data[q + 1] = col[1] * 255;
-          data[q + 2] = col[2] * 255;
-          data[q + 3] = 205;
-        }
-      }
-    }
-    return (j - 0.5) * h;
-  }
-
   /* ======================= filter 2D (MAC) ======================= */
   const { mx, my, h: g2, MX, N: N2, W: W2 } = F2;
   const U2 = new Float32Array(N2);
@@ -609,18 +583,20 @@ export function createFlowEngine(post) {
       step2(m.dt, m.jets2, m.vols2);
     }
     // keluaran: kecepatan pusat sel (tank) dan filter, dalam buffer yang dipinjam dari klien
-    const o = { t: 'f', u: m.bu, v: m.bv, w: m.bw, a: m.ba, b: m.bb, bs: m.bs, sliceY: 0 };
+    const o = { t: 'f', u: m.bu, v: m.bv, w: m.bw, a: m.ba, b: m.bb, m: m.bm };
     const U = F[0];
     const V = F[1];
     const W = F[2];
     o.u.fill(0);
     o.v.fill(0);
     o.w.fill(0);
+    o.m.fill(0);
     for (let n = 0; n < fluidCells.length; n++) {
       const c = fluidCells[n];
       o.u[c] = 0.5 * (U[c] + U[c + 1]);
       o.v[c] = 0.5 * (V[c] + V[c + SY]);
       o.w[c] = 0.5 * (W[c] + W[c + SZ]);
+      o.m[c] = avg[c]; // laju rata-rata waktu (τ = 8 dtk) untuk peta zona mati
     }
     o.a.set(a2);
     o.b.set(b2);
@@ -633,8 +609,7 @@ export function createFlowEngine(post) {
       o.sol2 = s2.slice();
     }
     if (m.wantStats) o.stats = stats3();
-    if (m.sliceY > 0) o.sliceY = slice(m.sliceY, o.bs);
-    post(o, [o.u.buffer, o.v.buffer, o.w.buffer, o.a.buffer, o.b.buffer, o.bs.buffer]);
+    post(o, [o.u.buffer, o.v.buffer, o.w.buffer, o.a.buffer, o.b.buffer, o.m.buffer]);
   }
 
   /** Akses internal untuk uji otomatis. */

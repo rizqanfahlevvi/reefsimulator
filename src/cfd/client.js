@@ -3,7 +3,7 @@
  * menyimpan medan kecepatan terakhir dan menyediakan sampling untuk jejak partikel.
  */
 import { G } from '../physics/constants.js';
-import { T3, F2, SLICE_BYTES } from './grid.js';
+import { T3, F2 } from './grid.js';
 import { ROCKS, NOZZLE, WAVEMAKER, dirOf, siphonX } from '../layout.js';
 
 const norm3 = (a) => {
@@ -20,13 +20,13 @@ const makeBuffers = () => ({
   w: new Float32Array(T3.N),
   a: new Float32Array(F2.N),
   b: new Float32Array(F2.N),
-  s: new Uint8Array(SLICE_BYTES),
+  m: new Float32Array(T3.N),
 });
 
 export class FlowClient {
   /**
    * @param {object} app state aplikasi
-   * @param {{onSlice?: (data: Uint8Array, y: number) => void}} hooks
+   * @param {object} [hooks]
    */
   constructor(app, hooks = {}) {
     this.app = app;
@@ -36,6 +36,9 @@ export class FlowClient {
     this.fw = new Float32Array(T3.N);
     this.f2a = new Float32Array(F2.N);
     this.f2b = new Float32Array(F2.N);
+    this.favg = new Float32Array(T3.N); // laju rata-rata waktu per sel (tank)
+    /** Bertambah setiap ada medan baru dari worker (untuk refresh tekstur bidang potong). */
+    this.version = 0;
     this.fsol = new Uint8Array(T3.N).fill(1);
     this.f2sol = new Uint8Array(F2.N).fill(1);
     this.spare = makeBuffers();
@@ -102,24 +105,25 @@ export class FlowClient {
     m.bw = s.w;
     m.ba = s.a;
     m.bb = s.b;
-    m.bs = s.s;
+    m.bm = s.m;
     this.spare = null;
     this.busy = true;
-    this.send(m, this.mode === 'worker' ? [s.u.buffer, s.v.buffer, s.w.buffer, s.a.buffer, s.b.buffer, s.s.buffer] : undefined);
+    this.send(m, this.mode === 'worker' ? [s.u.buffer, s.v.buffer, s.w.buffer, s.a.buffer, s.b.buffer, s.m.buffer] : undefined);
   }
 
   onResult(m) {
     // kembalikan buffer lama sebagai cadangan untuk pesan berikutnya (tanpa alokasi)
-    const old = { u: this.fu, v: this.fv, w: this.fw, a: this.f2a, b: this.f2b, s: m.bs };
+    const old = { u: this.fu, v: this.fv, w: this.fw, a: this.f2a, b: this.f2b, m: this.favg };
     this.fu = m.u;
     this.fv = m.v;
     this.fw = m.w;
     this.f2a = m.a;
     this.f2b = m.b;
+    this.favg = m.m;
     if (m.sol) this.fsol = m.sol;
     if (m.sol2) this.f2sol = m.sol2;
     if (m.stats) this.app.flowStats = m.stats;
-    if (m.sliceY > 0 && this.hooks.onSlice) this.hooks.onSlice(m.bs, m.sliceY);
+    this.version++;
     this.spare = old;
     this.busy = false;
     if (this.burst > 0) {
@@ -168,6 +172,36 @@ export class FlowClient {
     o[1] = tri(this.fv);
     o[2] = tri(this.fw);
     return o;
+  }
+
+  /** Laju rata-rata waktu (cm/s) hasil interpolasi trilinear. */
+  sampleAvg3(x, y, z) {
+    const { h, SY, SZ } = T3;
+    let gx = (x - 0.5) / h + 0.5;
+    let gy = y / h + 0.5;
+    let gz = (z - 0.5) / h + 0.5;
+    if (gx < 0.5) gx = 0.5;
+    else if (gx > T3.nx + 0.5) gx = T3.nx + 0.5;
+    if (gy < 0.5) gy = 0.5;
+    else if (gy > T3.ny + 0.5) gy = T3.ny + 0.5;
+    if (gz < 0.5) gz = 0.5;
+    else if (gz > T3.nz + 0.5) gz = T3.nz + 0.5;
+    const i0 = gx | 0;
+    const j0 = gy | 0;
+    const k0 = gz | 0;
+    const s1 = gx - i0;
+    const s0 = 1 - s1;
+    const t1 = gy - j0;
+    const t0 = 1 - t1;
+    const r1 = gz - k0;
+    const r0 = 1 - r1;
+    const a = i0 + SY * j0 + SZ * k0;
+    const b = a + SZ;
+    const F = this.favg;
+    return (
+      r0 * (t0 * (s0 * F[a] + s1 * F[a + 1]) + t1 * (s0 * F[a + SY] + s1 * F[a + SY + 1])) +
+      r1 * (t0 * (s0 * F[b] + s1 * F[b + 1]) + t1 * (s0 * F[b + SY] + s1 * F[b + SY + 1]))
+    );
   }
 
   cell2(x, y) {
@@ -331,7 +365,6 @@ export class FlowClient {
       jets2,
       vols2,
       wantStats: this.wantStats,
-      sliceY: this.wantStats && V.sliceOn ? this.app.sliceY : 0,
       reset: this.resetNext,
     };
     this.wantStats = false;

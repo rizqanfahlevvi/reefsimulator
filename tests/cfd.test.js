@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { createFlowEngine } from '../src/cfd/engine.js';
 import { PoissonSolver } from '../src/cfd/poisson.js';
-import { T3, F2, SLICE_BYTES } from '../src/cfd/grid.js';
+import { T3, F2 } from '../src/cfd/grid.js';
+import { colormap, COLORMAPS, colormapGLSL } from '../src/render/colormaps.js';
 import { ROCKS } from '../src/layout.js';
 
 function message(dt, extra = {}) {
@@ -32,14 +33,13 @@ function message(dt, extra = {}) {
       ['p', 44.5, 2.5, -90],
     ],
     wantStats: true,
-    sliceY: 4,
     reset: false,
     bu: new Float32Array(T3.N),
     bv: new Float32Array(T3.N),
     bw: new Float32Array(T3.N),
     ba: new Float32Array(F2.N),
     bb: new Float32Array(F2.N),
-    bs: new Uint8Array(SLICE_BYTES),
+    bm: new Float32Array(T3.N),
     ...extra,
   };
 }
@@ -93,7 +93,11 @@ describe('engine arus', () => {
     // jet ~28 cm/s pada sel 1,5 cm → skala laju regangan ~18 1/s
     expect(eng.debug.maxDivergence(m.vols)).toBeLessThan(0.02);
     expect(out.stats.mean).toBeGreaterThan(0.1); // rata-rata waktu τ = 8 dtk masih naik
-    expect(out.sliceY).toBeGreaterThan(0);
+    // laju rata-rata waktu dikirim untuk peta "zona mati" di bidang potong
+    let mx = 0;
+    for (let c = 0; c < T3.N; c++) mx = Math.max(mx, out.m[c]);
+    expect(mx).toBeGreaterThan(1);
+    expect(mx).toBeLessThanOrEqual(150);
   });
 
   it('filter 2D: divergensi kecil, kecepatan berhingga', () => {
@@ -122,5 +126,30 @@ describe('engine arus', () => {
     let s = 0;
     for (let c = 0; c < T3.N; c++) s += Math.abs(out.u[c]);
     expect(s).toBe(0);
+  });
+});
+
+describe('palet warna peta kecepatan', () => {
+  it('ujung palet sesuai acuan matplotlib/turbo (toleransi 8/255)', () => {
+    const near = (a, b) => a.every((v, i) => Math.abs(v * 255 - b[i]) <= 8);
+    expect(near(colormap('plasma', 0), [13, 8, 135])).toBe(true);
+    expect(near(colormap('plasma', 1), [240, 249, 33])).toBe(true);
+    expect(near(colormap('viridis', 0), [68, 1, 84])).toBe(true);
+    expect(near(colormap('viridis', 1), [253, 231, 37])).toBe(true);
+    // turbo (aproksimasi polinomial Google): gelap → hijau di tengah → merah
+    const [r0, g0, b0] = colormap('turbo', 0);
+    const [r5, g5, b5] = colormap('turbo', 0.5);
+    const [r1, g1, b1] = colormap('turbo', 1);
+    expect(r0 + g0 + b0).toBeLessThan(0.5);
+    expect(g5 > r5 && g5 > b5).toBe(true);
+    expect(r1 > g1 && r1 > b1).toBe(true);
+  });
+  it('nilai selalu dalam 0..1 dan GLSL memuat semua palet', () => {
+    for (const n of COLORMAPS)
+      for (let t = -0.2; t <= 1.2; t += 0.05) for (const v of colormap(n, t)) expect(v >= 0 && v <= 1).toBe(true);
+    const g = colormapGLSL();
+    expect(g).toContain('cmTurbo');
+    expect(g).toContain('cmPlasma');
+    expect(g).toContain('cmViridis');
   });
 });

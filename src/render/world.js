@@ -14,6 +14,7 @@ import { createSiphon } from './scene/siphon.js';
 import { buildFlowParticles, movePoints, foamAt, setDotTexture } from './scene/particles.js';
 import { buildTracers } from './scene/tracers.js';
 import { buildLabels } from './scene/labels.js';
+import { createFlowViz } from './flowviz.js';
 import { GEO } from '../physics/constants.js';
 
 const LAMP = {
@@ -44,6 +45,8 @@ export function createWorld(container, app, flow) {
   const fp = buildFlowParticles(scene, RETURN_PTS, GEO.ZOUT);
   const tracers = buildTracers(scene);
   const labels = buildLabels(scene);
+  const fviz = createFlowViz(renderer, scene, app, flow, container);
+  renderer.info.autoReset = false; // hitung draw call render utama + pass visualisasi per frame
 
   /*
    * Env map dipasang langsung ke material (bukan scene.environment) karena three r163+
@@ -88,6 +91,7 @@ export function createWorld(container, app, flow) {
       sun.castShadow = !lite;
       ctx.markShadowsDirty();
     }
+    fviz.setQuality(l);
     if (lite !== isLite) {
       isLite = lite;
       shaderQuality.caustics = !lite;
@@ -113,10 +117,9 @@ export function createWorld(container, app, flow) {
     rockG.visible = V.rock;
     sandG.visible = V.sand;
     room.roomG.visible = V.room;
-    tracers.trG.visible = V.cfd;
+    tracers.trG.visible = V.cfd && V.tr3d;
     eq.wmG.visible = V.wm;
     eq.wmMount.visible = V.wm;
-    if (!V.cfd) tracers.sliceM.visible = false;
     ctx.markShadowsDirty();
   }
 
@@ -272,8 +275,8 @@ export function createWorld(container, app, flow) {
     movePoints(fp.ret, fp.retPath, S.vr * 0.35, simdt, 0.3, 0.3, 0.3, Math.abs(S.vr) < 1);
     movePoints(fp.fil, fp.filPath, q.q23 / 11, simdt, 3.2, 0.6, 6, V.cfd || (Math.abs(q.q23) < 0.8 && Math.abs(q.q34) < 0.8));
     movePoints(fp.tank, siphon.tankPath || fp.tankPath, q.r / 10, simdt, 3, 2.2, 7, q.r < 0.8 || V.cfd);
-    if (V.cfd && simdt > 0) tracers.update(Math.max(0.01, Math.min(0.06, simdt)), flow, S.HT);
-    tracers.sliceM.visible = V.cfd && V.sliceOn && tracers.hasSlice;
+    if (V.cfd && V.tr3d && simdt > 0) tracers.update(Math.max(0.01, Math.min(0.06, simdt)), flow, S.HT);
+    fviz.update(real, simdt);
 
     foamAt(fp.foam, tt, 0, 26, f2, 21.7, 23.4, S.H3, -12.2, -2.8);
     foamAt(fp.foam, tt, 26, 26, f4, 39.7, 41.4, S.HP, -12.2, -2.8);
@@ -325,8 +328,11 @@ export function createWorld(container, app, flow) {
   }
 
   function render() {
+    renderer.info.reset();
     controls.update();
     renderer.render(scene, camera);
+    // pass GPU garis arus dijalankan sesudah render utama (hasilnya tampil di frame berikutnya)
+    fviz.runPasses();
   }
 
   return {
@@ -343,6 +349,7 @@ export function createWorld(container, app, flow) {
     get quality() {
       return qLevel;
     },
+    fviz,
     rebuildSiphon,
     applyView,
     applyGlass,

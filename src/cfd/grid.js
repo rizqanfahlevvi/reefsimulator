@@ -30,5 +30,3 @@ export const F2 = Object.freeze({
   x0: 0.5,
 });
 
-/** Ukuran tekstur irisan peta kecepatan (RGBA). */
-export const SLICE_BYTES = T3.nx * T3.nz * 4;

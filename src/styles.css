@@ -360,3 +360,64 @@ input[type='color'] {
     transform: none;
   }
 }
+
+/* ---------- visualisasi CFD: tombol cepat + legenda skala warna ---------- */
+#vbtn button.flowbtn {
+  margin-top: 4px;
+  background: rgba(42, 120, 214, 0.92);
+  color: #fff;
+  border-color: #2a78d6;
+  font-weight: 600;
+}
+#vbtn button.flowbtn.active {
+  background: rgba(255, 255, 255, 0.75);
+  color: #1b1b1a;
+  border-color: rgba(0, 0, 0, 0.15);
+}
+#fvLegend {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 210px;
+  padding: 6px 10px 4px;
+  border-radius: 8px;
+  background: rgba(14, 17, 23, 0.74);
+  color: #e9eef5;
+  font-size: 10.5px;
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+#fvLegend[hidden] {
+  display: none;
+}
+#fvLegend .t {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+#fvLegend canvas {
+  display: block;
+  width: 100%;
+  height: 10px;
+  border-radius: 3px;
+}
+#fvLegend .ticks {
+  position: relative;
+  height: 15px;
+  margin: 0 4px;
+  font-variant-numeric: tabular-nums;
+}
+#fvLegend .ticks span {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+@media (max-width: 520px) {
+  #fvLegend {
+    width: 160px;
+    font-size: 9.5px;
+  }
+  #hint {
+    display: none;
+  }
+}

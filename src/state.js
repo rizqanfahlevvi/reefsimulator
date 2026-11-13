@@ -15,7 +15,9 @@ export const DEFAULT_VIEW = Object.freeze({
   lamp: true,
   room: true,
   cfd: true,
-  sliceOn: false,
+  tr3d: true, // jejak partikel 3D
+  planeOn: false, // bidang potong tank: peta kecepatan + garis arus
+  filterPlane: false, // bidang potong filter
   wm: false,
 });
 
@@ -39,7 +41,10 @@ export const app = {
   WM: { q: 1000, yaw: 0, pitch: 0, y: 16 },
   /** Tampilan: mode gelap, tipe skimmer, latar, lampu. */
   LOOK: { dark: false, skim: 'air', bg: 'black', bgc: '#1e3a5f', lamp: 'mix', li: 80 },
-  sliceY: 4,
+  /** Tinggi bidang potong mendatar (cm). */
+  sliceY: 14,
+  /** Visualisasi CFD: arah bidang, posisi bidang tegak, palet, nilai peta, skala, animasi. */
+  FV: { orient: 'h', sliceZ: 12.5, cmap: 'turbo', value: 'inst', vmax: 0, mapAlpha: 0.9, anim: 1.5 },
   glassTint: 0.5,
   /** Statistik arus dari worker. */
   flowStats: { dead: 0, weak: 0, mean: 0, bottom: 0 },

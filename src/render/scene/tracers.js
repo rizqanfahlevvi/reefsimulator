@@ -1,10 +1,9 @@
 /**
- * Jejak berwarna dari medan arus CFD (titik + ekor) dan irisan peta kecepatan.
+ * Jejak partikel 3D berwarna dari medan arus CFD (titik + ekor).
  * Tank: 340 jejak 3D. Filter: 230 jejak 2D (rata-rata selebar chamber).
  */
 import * as THREE from 'three';
 import { speedColor } from '../../cfd/palette.js';
-import { T3, SLICE_BYTES } from '../../cfd/grid.js';
 
 const NT = 340;
 const NF = 230;
@@ -60,22 +59,6 @@ export function buildTracers(scene) {
   lines.frustumCulled = false;
   lines.renderOrder = 6;
   trG.add(lines);
-
-  /* irisan mendatar peta kecepatan */
-  const sliceData = new Uint8Array(SLICE_BYTES);
-  const sliceTex = new THREE.DataTexture(sliceData, T3.nx, T3.nz, THREE.RGBAFormat);
-  sliceTex.magFilter = THREE.LinearFilter;
-  sliceTex.minFilter = THREE.LinearFilter;
-  sliceTex.needsUpdate = true;
-  const sliceM = new THREE.Mesh(
-    new THREE.PlaneGeometry(49, 24.5),
-    new THREE.MeshBasicMaterial({ map: sliceTex, transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }),
-  );
-  sliceM.rotation.x = -Math.PI / 2;
-  sliceM.position.set(25, 4, 12.75);
-  sliceM.renderOrder = 5;
-  sliceM.visible = false;
-  scene.add(sliceM);
 
   const V = [0, 0, 0];
   const K = [0, 0, 0];
@@ -163,13 +146,7 @@ export function buildTracers(scene) {
     b.position.needsUpdate = b.aCol.needsUpdate = b.aAl.needsUpdate = true;
   }
 
-  const api = { trG, sliceM, update, setSlice, setPointScale, hasSlice: false };
-  function setSlice(data, y) {
-    api.hasSlice = true;
-    sliceData.set(data);
-    sliceTex.needsUpdate = true;
-    sliceM.position.y = y;
-  }
+  const api = { trG, update, setPointScale };
 
   function setPointScale(drawingBufferHeight) {
     pointMat.uniforms.uS.value = drawingBufferHeight * 0.5;

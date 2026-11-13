@@ -2,8 +2,9 @@
 import { app, emit, waterLitres, salinity, resetState } from '../state.js';
 import { defaultParams, initialState } from '../physics/hydraulics.js';
 import { fmt, $, el } from '../util/format.js';
+import { COLORMAPS, COLORMAP_LABELS } from '../render/colormaps.js';
 
-const GROUPS = ['Air', 'Pompa return', 'Siphon U-pipe', 'Arus di tank', 'Filter dan pengaman', 'Ornamen', 'Tampilan dan simulasi', 'Skimmer, latar, dan lampu'];
+const GROUPS = ['Air', 'Pompa return', 'Siphon U-pipe', 'Arus & visualisasi CFD', 'Filter dan pengaman', 'Ornamen', 'Tampilan dan simulasi', 'Skimmer, latar, dan lampu'];
 const OPEN_GROUPS = new Set([0, 1, 2, 3, 7]);
 
 /**
@@ -49,7 +50,16 @@ export function buildControls(h) {
     { g: 4, id: 'clog', label: 'Kapas kotor', min: 0, max: 95, step: 1, d: 0, unit: '%', get: () => P().clog * 100, set: (v) => (P().clog = v / 100) },
     { g: 3, id: 'nyaw', label: 'Duckbill mendatar (0° lurus ke kiri, + ke depan)', min: -90, max: 90, step: 5, d: 0, unit: '°', get: () => app.NZL.yaw, set: (v) => (app.NZL.yaw = v) },
     { g: 3, id: 'npit', label: 'Duckbill naik/turun (+ ke atas)', min: -60, max: 45, step: 5, d: 0, unit: '°', get: () => app.NZL.pitch, set: (v) => (app.NZL.pitch = v) },
-    { g: 3, id: 'sliceY', label: 'Tinggi irisan peta kecepatan', min: 2, max: 28, step: 1, d: 0, unit: ' cm', get: () => app.sliceY, set: (v) => (app.sliceY = v) },
+    { g: 3, id: 'sliceY', label: 'Tinggi bidang potong mendatar', min: 1, max: 28, step: 0.5, d: 1, unit: ' cm', get: () => app.sliceY, set: (v) => (app.sliceY = v) },
+    { g: 3, id: 'sliceZ', label: 'Posisi bidang tegak (dari kaca belakang)', min: 1, max: 24, step: 0.5, d: 1, unit: ' cm', get: () => app.FV.sliceZ, set: (v) => (app.FV.sliceZ = v) },
+    {
+      g: 3, id: 'vmax', label: 'Batas atas skala warna', min: 0, max: 30, step: 1, d: 0, unit: ' cm/s',
+      show: (v) => (v === 0 ? 'otomatis' : fmt(v, 0) + ' cm/s'),
+      get: () => app.FV.vmax,
+      set: (v) => (app.FV.vmax = v),
+    },
+    { g: 3, id: 'mapAlpha', label: 'Kepekatan peta warna', min: 0, max: 100, step: 5, d: 0, unit: '%', get: () => app.FV.mapAlpha * 100, set: (v) => (app.FV.mapAlpha = v / 100) },
+    { g: 3, id: 'anim', label: 'Kecepatan animasi garis arus', min: 0.5, max: 5, step: 0.5, d: 1, unit: '×', get: () => app.FV.anim, set: (v) => (app.FV.anim = v) },
     { g: 3, id: 'wq', label: 'Debit wavemaker', min: 300, max: 3000, step: 100, d: 0, unit: ' L/jam', get: () => app.WM.q, set: (v) => (app.WM.q = v) },
     { g: 3, id: 'wyaw', label: 'Wavemaker mendatar (+ ke depan)', min: -80, max: 80, step: 5, d: 0, unit: '°', get: () => app.WM.yaw, set: (v) => (app.WM.yaw = v) },
     { g: 3, id: 'wpit', label: 'Wavemaker naik/turun (+ ke atas)', min: -45, max: 45, step: 5, d: 0, unit: '°', get: () => app.WM.pitch, set: (v) => (app.WM.pitch = v) },
@@ -61,8 +71,10 @@ export function buildControls(h) {
   const TG = [
     { g: 2, id: 'venturi', label: 'Selang udara ke venturi / aqualifter' },
     { g: 2, id: 'box', label: 'Overflow box (sisir 26,5 cm) sebagai surface skimmer' },
-    { g: 3, id: 'cfd', view: true, label: 'Simulasi arus di tank dan filter (jejak berwarna)' },
-    { g: 3, id: 'sliceOn', view: true, label: 'Peta kecepatan (irisan mendatar)' },
+    { g: 3, id: 'cfd', view: true, label: 'Simulasi arus (CFD) di tank dan filter' },
+    { g: 3, id: 'planeOn', view: true, label: 'Bidang potong tank: peta kecepatan + garis arus (animasi)' },
+    { g: 3, id: 'filterPlane', view: true, label: 'Bidang potong filter: peta kecepatan + garis arus' },
+    { g: 3, id: 'tr3d', view: true, label: 'Jejak partikel 3D (titik + ekor)' },
     { g: 3, id: 'wm', view: true, label: 'Wavemaker di kaca kanan' },
     { g: 4, id: 'hole', label: 'Lubang siphon-break di return (26,3 cm)' },
     { g: 1, id: 'fswHi', label: 'Auto-off pompa: pelampung atas di tank (mati di 28,5 cm, cegah banjir)' },
@@ -104,7 +116,7 @@ export function buildControls(h) {
     U[s.id] = { inp, out, def: s };
     inp.addEventListener('input', () => {
       s.set(+inp.value);
-      out.textContent = fmt(+inp.value, s.d) + s.unit;
+      out.textContent = s.show ? s.show(+inp.value) : fmt(+inp.value, s.d) + s.unit;
     });
   }
 
@@ -180,20 +192,57 @@ export function buildControls(h) {
     });
   }
 
-  /* arus: legenda warna, catatan, preset tampilan */
-  gs[3].append(
-    el('div', {
-      className: 'lg',
-      innerHTML:
-        '<span><i style="background:#ed2e33"></i>&lt;1 cm/s (zona mati)</span><span><i style="background:#ffd633"></i>1–3 lemah</span><span><i style="background:#2ee69e"></i>3–8 sedang</span><span><i style="background:#e6faff;border:1px solid #9bb"></i>&gt;8 kuat</span>',
-    }),
-    el('p', {
-      className: 'note',
-      style: 'margin-top:6px',
-      textContent:
-        'Pola arus butuh ±30 detik simulasi untuk stabil setelah arah diubah. Model kisi 1,5 cm ini untuk membandingkan arah nozzle, bukan angka mutlak.',
-    }),
-  );
+  /* arus: pilihan visualisasi, legenda jejak 3D, catatan */
+  selectRow(gs[3], 'Arah bidang potong tank', 'fvOrient', [
+    ['h', 'Mendatar (lihat dari atas / miring)'],
+    ['v', 'Tegak memanjang (lihat dari depan)'],
+  ], (v) => {
+    app.FV.orient = v;
+    applyView();
+  }).value = app.FV.orient;
+  selectRow(gs[3], 'Nilai pada peta warna', 'fvValue', [
+    ['inst', 'Laju arus sesaat'],
+    ['avg', 'Laju rata-rata 8 detik (zona mati)'],
+  ], (v) => (app.FV.value = v)).value = app.FV.value;
+  selectRow(gs[3], 'Palet warna', 'fvCmap', COLORMAPS.map((k) => [k, COLORMAP_LABELS[k]]), (v) => (app.FV.cmap = v)).value = app.FV.cmap;
+  const legend3d = el('div', {
+    className: 'lg',
+    innerHTML:
+      '<span><i style="background:#ed2e33"></i>&lt;1 cm/s (zona mati)</span><span><i style="background:#ffd633"></i>1–3 lemah</span><span><i style="background:#2ee69e"></i>3–8 sedang</span><span><i style="background:#e6faff;border:1px solid #9bb"></i>&gt;8 kuat</span>',
+  });
+  const note3 = el('p', {
+    className: 'note',
+    style: 'margin-top:6px',
+    textContent:
+      'Garis arus = jejak ribuan partikel yang terbawa arus pada bidang potong; warnanya mengikuti laju. Pola arus butuh ±30 detik simulasi untuk stabil setelah arah diubah. Model kisi 1,5 cm ini untuk membandingkan arah nozzle/wavemaker, bukan angka mutlak.',
+  });
+  {
+    // susun ulang isi grup arus supaya berurutan secara logis
+    const g3 = gs[3];
+    const order = ['t_cfd', 't_planeOn', 'fvOrient', 's_sliceY', 's_sliceZ', 't_filterPlane', 'fvValue', 'fvCmap', 's_vmax', 's_mapAlpha', 's_anim', 't_tr3d', legend3d, 's_nyaw', 's_npit', 't_wm', 's_wq', 's_wyaw', 's_wpit', 's_wy', note3];
+    for (const item of order) {
+      if (typeof item !== 'string') {
+        g3.append(item);
+        continue;
+      }
+      const e = $(item);
+      if (e.type === 'checkbox') g3.append(e.closest('label'));
+      else {
+        const lab = g3.querySelector(`label[for="${item}"]`);
+        if (lab) g3.append(lab);
+        g3.append(e);
+      }
+    }
+  }
+
+  /* preset tampilan */
+  const STUDY = { fish: false, coral: false, lamp: false, room: false, label: false, cfd: true, planeOn: true, filterPlane: true, tr3d: false, flow: true };
+  const FULL = { fish: true, coral: true, rock: true, sand: true, lamp: true, room: true, label: true, cfd: true, planeOn: false, filterPlane: false, tr3d: true };
+  const setMode = (study) => {
+    Object.assign(app.V, study ? STUDY : FULL);
+    applyView();
+    syncUI();
+  };
   {
     const b = el('div', { className: 'btns' });
     const mk = (text, fn) => {
@@ -201,18 +250,12 @@ export function buildControls(h) {
       e.addEventListener('click', fn);
       b.append(e);
     };
-    mk('Mode studi aliran', () => {
-      Object.assign(app.V, { fish: false, coral: false, lamp: false, room: false, label: false, cfd: true, sliceOn: true, flow: true });
-      applyView();
-      syncUI();
-    });
-    mk('Mode rencana lengkap', () => {
-      Object.assign(app.V, { fish: true, coral: true, rock: true, sand: true, lamp: true, room: true, label: true, cfd: true, sliceOn: false });
-      applyView();
-      syncUI();
-    });
+    mk('Mode studi aliran', () => setMode(true));
+    mk('Mode rencana lengkap', () => setMode(false));
     gs[5].append(b);
   }
+  // tombol cepat di tampilan 3D
+  $('bFlow')?.addEventListener('click', () => setMode(!(app.V.planeOn || app.V.filterPlane)));
 
   /* skimmer, latar, lampu — disisipkan sebelum slider kecerahan */
   {
@@ -266,7 +309,18 @@ export function buildControls(h) {
     h.applyView();
     const { V } = app;
     for (const k of ['wq', 'wyaw', 'wpit', 'wy']) U[k].inp.disabled = !V.wm;
-    U.sliceY.inp.disabled = !V.sliceOn;
+    U.sliceY.inp.disabled = !(V.planeOn && app.FV.orient === 'h');
+    U.sliceZ.inp.disabled = !(V.planeOn && app.FV.orient === 'v');
+    const anyPlane = V.cfd && (V.planeOn || V.filterPlane);
+    for (const k of ['vmax', 'mapAlpha', 'anim']) U[k].inp.disabled = !anyPlane;
+    for (const id of ['fvValue', 'fvCmap']) $(id).disabled = !anyPlane;
+    $('fvOrient').disabled = !V.planeOn;
+    const fb = $('bFlow');
+    if (fb) {
+      const on = V.planeOn || V.filterPlane;
+      fb.textContent = on ? 'Tampilan penuh' : 'Peta arus';
+      fb.classList.toggle('active', on);
+    }
     for (const k of ['nyaw', 'npit']) U[k].inp.disabled = !V.cfd;
   }
 
@@ -275,7 +329,7 @@ export function buildControls(h) {
       const u = U[s.id];
       const v = s.get();
       u.inp.value = v;
-      u.out.textContent = fmt(v, s.d) + s.unit;
+      u.out.textContent = s.show ? s.show(v) : fmt(v, s.d) + s.unit;
     }
     for (const t of TG) U[t.id].chk.checked = !!(t.view ? app.V[t.id] : app.P[t.id]);
     const p = P();

@@ -59,6 +59,8 @@ src/
     materials.js        material (kaca "glassy", kaustik)
     geom.js             helper geometri + StaticBatch (penggabung draw call)
     world.js            perakit scene + update per frame + kualitas
+    flowviz.js          bidang potong CFD: peta warna + garis arus GPU
+    colormaps.js        palet Turbo/Plasma/Viridis (GLSL + JS dari koefisien yang sama)
     scene/*.js          ruangan, tank, aquascape, ikan, peralatan, air, siphon, partikel, jejak, label
   ui/                   kontrol, metrik/status, grafik, listrik
 tests/                  Vitest: regresi hidrolik vs versi 1, solver Poisson, engine CFD
@@ -73,4 +75,7 @@ tests/                  Vitest: regresi hidrolik vs versi 1, solver Poisson, eng
 - **CFD tank**: kisi MAC staggered 32×20×16, adveksi MacCormack, viskositas eddy, tutup kaku di permukaan,
   proyeksi tekanan PCG/MIC(0). Divergensi sisa ±10⁻³ s⁻¹ (versi 1, kisi collocated + 16 iterasi Gauss–Seidel: ±13 s⁻¹).
 - **CFD filter**: kisi MAC 2D 98×60, kapas/bio sebagai hambatan berpori.
+- **Visualisasi arus** (tombol *Peta arus*): bidang potong tank (mendatar/tegak) dan filter berisi peta warna laju arus
+  (Turbo/Plasma/Viridis, sesaat atau rata-rata 8 dtk) + garis arus beranimasi. Garis arus dihitung di GPU
+  (ribuan partikel di tekstur, jejak memudar ping-pong) sehingga ringan; lihat `src/render/flowviz.js`.
 - Angka adalah acuan untuk dikalibrasi saat uji air tawar, bukan pengganti uji itu.

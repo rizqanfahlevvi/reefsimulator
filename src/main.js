@@ -14,9 +14,7 @@ import { $ } from './util/format.js';
 const view = $('view');
 let world = null;
 
-const flow = new FlowClient(app, {
-  onSlice: (data, y) => world?.tracers.setSlice(data, y),
-});
+const flow = new FlowClient(app);
 
 /* dunia 3D (dimuat terpisah supaya UI dan angka tetap jalan bila WebGL gagal) */
 async function initWorld() {
@@ -55,7 +53,7 @@ let siphonDirty = false;
 let siphonAt = 0;
 on('siphon-dirty', () => (siphonDirty = true));
 
-document.querySelectorAll('#vbtn button').forEach((b) => b.addEventListener('click', () => world?.setView(b.dataset.v)));
+document.querySelectorAll('#vbtn button[data-v]').forEach((b) => b.addEventListener('click', () => world?.setView(b.dataset.v)));
 
 if (world) {
   world.rebuildSiphon();
@@ -164,4 +162,6 @@ window.__sim = {
   app,
   flow,
   setView: (k) => world?.setView(k),
+  /** majukan animasi garis arus n langkah (diagnostik) */
+  flowAdvance: (n, dt) => world?.fviz.debugAdvance(n, dt),
 };
