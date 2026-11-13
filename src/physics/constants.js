@@ -51,5 +51,12 @@ export const GEO = Object.freeze({
   ZJ: 3,
 });
 
+/**
+ * Ambang saklar pelampung (auto-off pompa), cm dari dasar, dengan histeresis.
+ * Atas (di tank): pompa mati saat level ≥ HI_OFF, nyala lagi saat < HI_ON.
+ * Bawah (di chamber pompa): pompa mati saat level < LO_OFF, nyala lagi saat > LO_ON.
+ */
+export const FSW = Object.freeze({ HI_OFF: 28.5, HI_ON: 28, LO_OFF: 4, LO_ON: 8 });
+
 /** Langkah waktu tetap integrator hidrolik (detik). */
 export const PHYS_DT = 0.02;

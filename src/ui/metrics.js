@@ -12,6 +12,7 @@ const MET = [
   ['m3P', 'Ch 3 / Ch pompa'],
   ['mQs', 'Debit siphon'],
   ['mQr', 'Debit return'],
+  ['mPump', 'Status pompa'],
   ['mV', 'Kecepatan di U-pipe'],
   ['mHp', 'Head pompa / statis'],
   ['mVol', 'Volume air sekarang'],
@@ -69,6 +70,20 @@ export function buildMetrics() {
     let vmax = 0;
     for (let i = 0; i < P.n; i++) vmax = Math.max(vmax, Math.abs(S.vs[i]));
     set('mV', fmt(vmax / 100, 2) + ' m/s');
+    {
+      // pompa jalan atau dimatikan oleh apa
+      let ps = 'jalan';
+      let bad = false;
+      if (!P.on) ps = 'mati · listrik';
+      else if (S.cutHi) ps = 'mati · pelampung atas';
+      else if (S.cutLo) ps = 'mati · pelampung bawah';
+      else if (S.HP < 2.3) {
+        ps = 'jalan kering!';
+        bad = true;
+      }
+      set('mPump', ps);
+      nodes.mPump.style.color = bad ? 'var(--bad)' : ps === 'jalan' ? '' : 'rgb(' + C_WARN + ')';
+    }
     set('mHp', fmt(q.hp, 0) + ' / ' + fmt(q.hs, 0) + ' cm');
     set('mVol', fmt(waterLitres()) + ' L');
     {
@@ -112,8 +127,9 @@ export function buildMetrics() {
       msg = 'MELUAP: air tumpah ke lantai';
       col = C_BAD;
     } else if (nb === P.n && P.on) {
-      msg = 'Siphon putus' + (S.cutHi ? ' · pelampung menahan pompa' : ' · tank akan meluap');
-      col = S.cutHi ? C_WARN : C_BAD;
+      const held = S.cutHi ? ' · pelampung atas menahan pompa' : S.cutLo ? ' · pelampung bawah menahan pompa' : ' · tank akan meluap';
+      msg = 'Siphon putus' + held;
+      col = S.cutHi || S.cutLo ? C_WARN : C_BAD;
     } else if (S.cutHi) {
       msg = 'Pelampung atas memutus pompa';
       col = C_WARN;

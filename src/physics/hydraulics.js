@@ -7,7 +7,7 @@
  *
  * Satuan CGS: cm, cm³/s, cm/s, detik.
  */
-import { G, NU, RIM, GEO } from './constants.js';
+import { G, NU, RIM, GEO, FSW } from './constants.js';
 
 /** Parameter bawaan (semua yang bisa diubah lewat UI). */
 export function defaultParams() {
@@ -29,7 +29,8 @@ export function defaultParams() {
     box: false, // overflow box sebagai surface skimmer
     hole: true, // lubang siphon-break di return
     ato: true,
-    fsw: true, // saklar pelampung
+    fswHi: true, // auto-off pompa: pelampung atas di tank (cegah banjir)
+    fswLo: true, // auto-off pompa: pelampung bawah di chamber pompa (cegah pompa kering)
     clog: 0, // kapas kotor (0..1)
     disp: 4, // batu + pasir (L)
   };
@@ -235,16 +236,15 @@ function intake(S, P, i, v, As) {
 
 /** Satu langkah integrasi (dt detik). Memutasi S. */
 export function step(S, P, dt) {
-  // saklar pelampung dengan histeresis
-  if (P.fsw) {
-    if (S.HT >= 28.5) S.cutHi = true;
-    else if (S.HT < 28) S.cutHi = false;
-    if (S.HP < 4) S.cutLo = true;
-    else if (S.HP > 8) S.cutLo = false;
-  } else {
-    S.cutHi = false;
-    S.cutLo = false;
-  }
+  // auto-off pompa: dua saklar pelampung independen, masing-masing dengan histeresis
+  if (P.fswHi) {
+    if (S.HT >= FSW.HI_OFF) S.cutHi = true;
+    else if (S.HT < FSW.HI_ON) S.cutHi = false;
+  } else S.cutHi = false;
+  if (P.fswLo) {
+    if (S.HP < FSW.LO_OFF) S.cutLo = true;
+    else if (S.HP > FSW.LO_ON) S.cutLo = false;
+  } else S.cutLo = false;
   const run = P.on && !S.cutHi && !S.cutLo;
   S.run = run;
   const cs = S.salt / Math.max(1000, totalVolume(S, P) - P.disp * 1000);

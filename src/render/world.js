@@ -309,8 +309,8 @@ export function createWorld(container, app, flow) {
     /* lain-lain */
     M.floss.color.setRGB(1 - 0.6 * P.clog, 1 - 0.72 * P.clog, 1 - 0.85 * P.clog);
     eq.holeM.visible = P.hole;
-    eq.fsHi.visible = P.fsw;
-    eq.fsLo.visible = P.fsw;
+    eq.fsHi.visible = P.fswHi;
+    eq.fsLo.visible = P.fswLo;
     eq.atoG.visible = P.ato;
     const rem = Math.max(0.02, 1 - S.ato / GEO.ATOMAX) * 11.5;
     eq.atoW.scale.y = rem;

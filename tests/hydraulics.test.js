@@ -26,7 +26,13 @@ const SCENARIOS = {
 function runBoth(over, steps, events = {}) {
   const L = loadLegacy();
   const P1 = Object.assign(L.defP(), over);
-  const P2 = Object.assign(H.defaultParams(), over);
+  // versi 1 punya satu saklar `fsw` untuk kedua pelampung; versi 2 memisahkannya
+  const over2 = { ...over };
+  if ('fsw' in over2) {
+    over2.fswHi = over2.fswLo = over2.fsw;
+    delete over2.fsw;
+  }
+  const P2 = Object.assign(H.defaultParams(), over2);
   const S1 = L.initS(P1);
   const S2 = H.initialState(P2);
   for (let n = 0; n < steps; n++) {
@@ -119,6 +125,63 @@ describe('hidrolik: hukum kekekalan', () => {
     expect(S.spill).toBe(0);
     expect(S.HT).toBeLessThanOrEqual(GEO.ZHOLE + 0.05);
     expect(Math.abs(S.q.r)).toBeLessThan(0.01);
+  });
+});
+
+describe('auto-off pompa (saklar pelampung atas/bawah independen)', () => {
+  /** Siphon putus tanpa venturi, lalu jalan 20 menit. */
+  function siphonBreak(over) {
+    const P = Object.assign(H.defaultParams(), { venturi: false }, over);
+    const S = H.initialState(P);
+    for (let n = 0; n < 3000; n++) H.step(S, P, 0.02);
+    S.brk[0] = true;
+    S.air[0] = 1;
+    S.vs[0] = 0;
+    const r = { dryRun: 0, cutHi: false, cutLo: false, minHP: 99 };
+    for (let n = 0; n < 60000; n++) {
+      H.step(S, P, 0.02);
+      if (S.run && S.HP < 2.3) r.dryRun += 0.02;
+      r.cutHi ||= S.cutHi;
+      r.cutLo ||= S.cutLo;
+      r.minHP = Math.min(r.minHP, S.HP);
+    }
+    r.spill = S.spill;
+    return r;
+  }
+
+  it('tanpa pelampung: pompa jalan kering setelah siphon putus', () => {
+    const r = siphonBreak({ fswHi: false, fswLo: false, ato: false });
+    expect(r.dryRun).toBeGreaterThan(600);
+    expect(r.cutHi || r.cutLo).toBe(false);
+  });
+
+  it('hanya pelampung bawah: pompa mati di 4 cm, tidak jalan kering', () => {
+    const r = siphonBreak({ fswHi: false, fswLo: true, ato: false });
+    expect(r.cutLo).toBe(true);
+    expect(r.dryRun).toBe(0);
+    expect(r.minHP).toBeGreaterThan(3.5);
+  });
+
+  it('ATO aktif tanpa pelampung atas: tank meluap', () => {
+    const r = siphonBreak({ fswHi: false, fswLo: true, ato: true });
+    expect(r.spill).toBeGreaterThan(0);
+  });
+
+  it('ATO aktif dengan pelampung atas: pompa mati di 28,5 cm, tidak meluap', () => {
+    const r = siphonBreak({ fswHi: true, fswLo: false, ato: true });
+    expect(r.cutHi).toBe(true);
+    expect(r.spill).toBe(0);
+  });
+
+  it('pelampung mati tidak pernah memutus pompa', () => {
+    const P = Object.assign(H.defaultParams(), { fswHi: false, fswLo: false });
+    const S = H.initialState(P);
+    S.HT = 29.5;
+    S.HP = 2;
+    H.step(S, P, 0.02);
+    expect(S.cutHi).toBe(false);
+    expect(S.cutLo).toBe(false);
+    expect(S.run).toBe(true);
   });
 });
 
