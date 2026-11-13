@@ -23,7 +23,7 @@ function freshApp() {
     NZL: { yaw: 20, pitch: 15 },
     WM: { q: 1000, yaw: 0, pitch: 0, y: 16 },
     LOOK: { dark: false, skim: 'air', bg: 'black', bgc: '#1e3a5f', lamp: 'mix', li: 80 },
-    FV: { orient: 'h', sliceZ: 12.5, cmap: 'turbo', value: 'inst', vmax: 0, mapAlpha: 0.9, anim: 1.5 },
+    FV: { orient: 'h', sliceZ: 12.5, cmap: 'turbo', value: 'inst', vmax: 0, mapAlpha: 0.9, anim: 1.5, fogMode: 'fast', fogDensity: 0.6 },
     sliceY: 14,
     glassTint: 0.5,
     SPD: 3,
@@ -55,6 +55,9 @@ describe('pengaturan: simpan dan muat', () => {
     a.LOOK.bgc = '#123ABC';
     a.FV.cmap = 'viridis';
     a.V.planeOn = true;
+    a.V.fog = true;
+    a.FV.fogMode = 'dead';
+    a.FV.fogDensity = 1.2;
     a.quality = '2';
     el.rows[1].w = 32;
     el.tarif = 605;
@@ -72,6 +75,9 @@ describe('pengaturan: simpan dan muat', () => {
     expect(b.LOOK.bgc).toBe('#123abc');
     expect(b.FV.cmap).toBe('viridis');
     expect(b.V.planeOn).toBe(true);
+    expect(b.V.fog).toBe(true);
+    expect(b.FV.fogMode).toBe('dead');
+    expect(b.FV.fogDensity).toBe(1.2);
     expect(b.quality).toBe('2');
     expect(el2.rows[1].w).toBe(32);
     expect(el2.tarif).toBe(605);

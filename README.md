@@ -61,6 +61,7 @@ src/
     geom.js             helper geometri + StaticBatch (penggabung draw call)
     world.js            perakit scene + update per frame + kualitas
     flowviz.js          bidang potong CFD: peta warna + garis arus GPU
+    flowfog.js          kabut kecepatan 3D (volume rendering ray marching)
     colormaps.js        palet Turbo/Plasma/Viridis (GLSL + JS dari koefisien yang sama)
     scene/*.js          ruangan, tank, aquascape, ikan, peralatan, air, siphon, partikel, jejak, label
   ui/                   kontrol, metrik/status, grafik, listrik
@@ -87,4 +88,7 @@ sehingga data rusak/versi lama tidak membuat aplikasi error.
 - **Visualisasi arus** (tombol *Peta arus*): bidang potong tank (mendatar/tegak) dan filter berisi peta warna laju arus
   (Turbo/Plasma/Viridis, sesaat atau rata-rata 8 dtk) + garis arus beranimasi. Garis arus dihitung di GPU
   (ribuan partikel di tekstur, jejak memudar ping-pong) sehingga ringan; lihat `src/render/flowviz.js`.
+- **Kabut kecepatan 3D**: volume rendering (ray marching tekstur 3D 32×20×16) medan laju seluruh tank, dengan sorotan
+  arus kuat, zona mati (< 1 cm/s, warna peringatan), atau semua laju. Sinar berhenti di batu/pasir sehingga oklusi benar
+  tanpa depth pass; langkah sinar menyesuaikan kualitas grafis. Lihat `src/render/flowfog.js`.
 - Angka adalah acuan untuk dikalibrasi saat uji air tawar, bukan pengganti uji itu.

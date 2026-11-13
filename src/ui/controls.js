@@ -60,6 +60,7 @@ export function buildControls(h) {
       set: (v) => (app.FV.vmax = v),
     },
     { g: 3, id: 'mapAlpha', label: 'Kepekatan peta warna', min: 0, max: 100, step: 5, d: 0, unit: '%', get: () => app.FV.mapAlpha * 100, set: (v) => (app.FV.mapAlpha = v / 100) },
+    { g: 3, id: 'fogDensity', label: 'Kepekatan kabut', min: 0.1, max: 3, step: 0.1, d: 1, unit: '×', get: () => app.FV.fogDensity, set: (v) => (app.FV.fogDensity = v) },
     { g: 3, id: 'anim', label: 'Kecepatan animasi garis arus', min: 0.5, max: 5, step: 0.5, d: 1, unit: '×', get: () => app.FV.anim, set: (v) => (app.FV.anim = v) },
     { g: 3, id: 'wq', label: 'Debit wavemaker', min: 300, max: 3000, step: 100, d: 0, unit: ' L/jam', get: () => app.WM.q, set: (v) => (app.WM.q = v) },
     { g: 3, id: 'wyaw', label: 'Wavemaker mendatar (+ ke depan)', min: -80, max: 80, step: 5, d: 0, unit: '°', get: () => app.WM.yaw, set: (v) => (app.WM.yaw = v) },
@@ -75,6 +76,7 @@ export function buildControls(h) {
     { g: 3, id: 'cfd', view: true, label: 'Simulasi arus (CFD) di tank dan filter' },
     { g: 3, id: 'planeOn', view: true, label: 'Bidang potong tank: peta kecepatan + garis arus (animasi)' },
     { g: 3, id: 'filterPlane', view: true, label: 'Bidang potong filter: peta kecepatan + garis arus' },
+    { g: 3, id: 'fog', view: true, label: 'Kabut kecepatan 3D (seluruh volume tank)' },
     { g: 3, id: 'tr3d', view: true, label: 'Jejak partikel 3D (titik + ekor)' },
     { g: 3, id: 'wm', view: true, label: 'Wavemaker di kaca kanan' },
     { g: 4, id: 'hole', label: 'Lubang siphon-break di return (26,3 cm)' },
@@ -202,6 +204,11 @@ export function buildControls(h) {
     app.FV.orient = v;
     applyView();
   }).value = app.FV.orient;
+  selectRow(gs[3], 'Sorot pada kabut 3D', 'fvFogMode', [
+    ['fast', 'Arus kuat (jet duckbill / wavemaker)'],
+    ['dead', 'Zona mati (laju < 1 cm/s)'],
+    ['all', 'Semua laju'],
+  ], (v) => (app.FV.fogMode = v)).value = app.FV.fogMode;
   selectRow(gs[3], 'Nilai pada peta warna', 'fvValue', [
     ['inst', 'Laju arus sesaat'],
     ['avg', 'Laju rata-rata 8 detik (zona mati)'],
@@ -216,12 +223,12 @@ export function buildControls(h) {
     className: 'note',
     style: 'margin-top:6px',
     textContent:
-      'Garis arus = jejak ribuan partikel yang terbawa arus pada bidang potong; warnanya mengikuti laju. Pola arus butuh ±30 detik simulasi untuk stabil setelah arah diubah. Model kisi 1,5 cm ini untuk membandingkan arah nozzle/wavemaker, bukan angka mutlak.',
+      'Garis arus = jejak ribuan partikel yang terbawa arus pada bidang potong; warnanya mengikuti laju. Kabut 3D menampilkan laju di seluruh volume air sekaligus (paling berat untuk HP; turunkan kualitas grafis bila tersendat). Pola arus butuh ±30 detik simulasi untuk stabil setelah arah diubah. Model kisi 1,5 cm ini untuk membandingkan arah nozzle/wavemaker, bukan angka mutlak.',
   });
   {
     // susun ulang isi grup arus supaya berurutan secara logis
     const g3 = gs[3];
-    const order = ['t_cfd', 't_planeOn', 'fvOrient', 's_sliceY', 's_sliceZ', 't_filterPlane', 'fvValue', 'fvCmap', 's_vmax', 's_mapAlpha', 's_anim', 't_tr3d', legend3d, 's_nyaw', 's_npit', 't_wm', 's_wq', 's_wyaw', 's_wpit', 's_wy', note3];
+    const order = ['t_cfd', 't_planeOn', 'fvOrient', 's_sliceY', 's_sliceZ', 't_filterPlane', 't_fog', 'fvFogMode', 's_fogDensity', 'fvValue', 'fvCmap', 's_vmax', 's_mapAlpha', 's_anim', 't_tr3d', legend3d, 's_nyaw', 's_npit', 't_wm', 's_wq', 's_wyaw', 's_wpit', 's_wy', note3];
     for (const item of order) {
       if (typeof item !== 'string') {
         g3.append(item);
@@ -314,8 +321,12 @@ export function buildControls(h) {
     U.sliceY.inp.disabled = !(V.planeOn && app.FV.orient === 'h');
     U.sliceZ.inp.disabled = !(V.planeOn && app.FV.orient === 'v');
     const anyPlane = V.cfd && (V.planeOn || V.filterPlane);
-    for (const k of ['vmax', 'mapAlpha', 'anim']) U[k].inp.disabled = !anyPlane;
-    for (const id of ['fvValue', 'fvCmap']) $(id).disabled = !anyPlane;
+    const anyViz = anyPlane || (V.cfd && V.fog);
+    for (const k of ['mapAlpha', 'anim']) U[k].inp.disabled = !anyPlane;
+    U.vmax.inp.disabled = !anyViz;
+    for (const id of ['fvValue', 'fvCmap']) $(id).disabled = !anyViz;
+    U.fogDensity.inp.disabled = !(V.cfd && V.fog);
+    $('fvFogMode').disabled = !(V.cfd && V.fog);
     $('fvOrient').disabled = !V.planeOn;
     const fb = $('bFlow');
     if (fb) {

@@ -55,6 +55,7 @@ export const SPEC = {
     tr3d: bool,
     planeOn: bool,
     filterPlane: bool,
+    fog: bool,
     wm: bool,
   },
   NZL: { yaw: num(-90, 90), pitch: num(-60, 45) },
@@ -75,6 +76,8 @@ export const SPEC = {
     vmax: num(0, 30),
     mapAlpha: num(0, 1),
     anim: num(0.5, 5),
+    fogMode: oneOf('fast', 'dead', 'all'),
+    fogDensity: num(0.1, 3),
   },
   /** nilai langsung di objek app */
   top: {

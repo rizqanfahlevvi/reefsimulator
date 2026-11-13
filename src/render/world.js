@@ -15,6 +15,7 @@ import { buildFlowParticles, movePoints, foamAt, setDotTexture } from './scene/p
 import { buildTracers } from './scene/tracers.js';
 import { buildLabels } from './scene/labels.js';
 import { createFlowViz } from './flowviz.js';
+import { createFlowFog } from './flowfog.js';
 import { GEO } from '../physics/constants.js';
 
 const LAMP = {
@@ -46,6 +47,7 @@ export function createWorld(container, app, flow) {
   const tracers = buildTracers(scene);
   const labels = buildLabels(scene);
   const fviz = createFlowViz(renderer, scene, app, flow, container);
+  const fog = createFlowFog(scene, app, flow, camera);
   renderer.info.autoReset = false; // hitung draw call render utama + pass visualisasi per frame
 
   /*
@@ -92,6 +94,7 @@ export function createWorld(container, app, flow) {
       ctx.markShadowsDirty();
     }
     fviz.setQuality(l);
+    fog.setQuality(l);
     if (lite !== isLite) {
       isLite = lite;
       shaderQuality.caustics = !lite;
@@ -276,7 +279,8 @@ export function createWorld(container, app, flow) {
     movePoints(fp.fil, fp.filPath, q.q23 / 11, simdt, 3.2, 0.6, 6, V.cfd || (Math.abs(q.q23) < 0.8 && Math.abs(q.q34) < 0.8));
     movePoints(fp.tank, siphon.tankPath || fp.tankPath, q.r / 10, simdt, 3, 2.2, 7, q.r < 0.8 || V.cfd);
     if (V.cfd && V.tr3d && simdt > 0) tracers.update(Math.max(0.01, Math.min(0.06, simdt)), flow, S.HT);
-    fviz.update(real, simdt);
+    fviz.update(real, simdt, { on: V.cfd && V.fog, p95: fog.p95, mode: app.FV.fogMode });
+    fog.update(fviz.vmax);
 
     foamAt(fp.foam, tt, 0, 26, f2, 21.7, 23.4, S.H3, -12.2, -2.8);
     foamAt(fp.foam, tt, 26, 26, f4, 39.7, 41.4, S.HP, -12.2, -2.8);

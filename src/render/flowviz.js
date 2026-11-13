@@ -12,6 +12,7 @@
  */
 import * as THREE from 'three';
 import { colormapGLSL, colormap, COLORMAPS } from './colormaps.js';
+import { DEAD_LO, DEAD_HI, DEAD_MAX } from './flowfog.js';
 
 const QUAD_VS = /* glsl */ `
 varying vec2 vUv;
@@ -324,28 +325,34 @@ function createLegend(container) {
   const cv = box.querySelector('canvas');
   const ticks = box.querySelector('.ticks');
   let key = '';
-  return (visible, cmapName, max, avg) => {
+  return (visible, cmapName, max, avg, deadOnly = false) => {
     box.hidden = !visible;
     if (!visible) return;
-    const m = Math.max(1, Math.round(max * 2) / 2);
-    const k = `${cmapName}|${m}|${avg}`;
+    const m = deadOnly ? DEAD_MAX : Math.max(1, Math.round(max * 2) / 2);
+    const k = `${cmapName}|${m}|${avg}|${deadOnly}`;
     if (k === key) return;
     key = k;
-    title.textContent = avg ? 'Laju arus rata-rata 8 dtk (cm/s)' : 'Laju arus (cm/s)';
+    title.textContent = deadOnly
+      ? `Kabut zona mati: laju ${avg ? 'rata-rata 8 dtk ' : ''}< 1 cm/s`
+      : avg
+        ? 'Laju arus rata-rata 8 dtk (cm/s)'
+        : 'Laju arus (cm/s)';
     const x = cv.getContext('2d');
     if (x) {
       const c = [0, 0, 0];
       for (let i = 0; i < cv.width; i++) {
-        colormap(cmapName, i / (cv.width - 1), c);
+        const t = i / (cv.width - 1);
+        if (deadOnly) for (let q = 0; q < 3; q++) c[q] = DEAD_LO[q] + (DEAD_HI[q] - DEAD_LO[q]) * t;
+        else colormap(cmapName, t, c);
         x.fillStyle = `rgb(${(c[0] * 255) | 0},${(c[1] * 255) | 0},${(c[2] * 255) | 0})`;
         x.fillRect(i, 0, 1, cv.height);
       }
     }
     // tanda nilai: 0, batas kategori reef (1 mati, 3 lemah, 8 kuat) yang muat, dan maksimum
-    const vals = [0, 1, 3, 8].filter((v) => v < m * 0.92);
-    vals.push(m);
+    const vals = deadOnly ? [0, 0.5, 1] : [0, 1, 3, 8].filter((v) => v < m * 0.92);
+    if (!deadOnly) vals.push(m);
     ticks.innerHTML = vals
-      .map((v) => `<span style="left:${(v / m) * 100}%">${String(v).replace('.', ',')}${v === m ? '+' : ''}</span>`)
+      .map((v) => `<span style="left:${(v / m) * 100}%">${String(v).replace('.', ',')}${v === m && !deadOnly ? '+' : ''}</span>`)
       .join('');
   };
 }
@@ -442,8 +449,12 @@ export function createFlowViz(renderer, scene, app, flow, container) {
   let maxS = 6;
   let lastReal = 0;
   let lastSim = 0;
+  let currentMax = 6;
 
-  function update(real, simdt) {
+  /**
+   * @param {{on: boolean, p95: number}} [fog] kabut kecepatan 3D (ikut skala warna & legenda yang sama)
+   */
+  function update(real, simdt, fog = { on: false, p95: 0, mode: 'fast' }) {
     const { V, FV, S } = app;
     lastReal = real;
     lastSim = simdt;
@@ -463,9 +474,13 @@ export function createFlowViz(renderer, scene, app, flow, container) {
       lastRefresh = now;
       lastKey = key;
       simSinceRefresh = 0;
-      // skala warna otomatis: persentil 95, dihaluskan
-      const target = Math.max(2, Math.max(...visible.map((p) => p.p95)) * 1.15);
-      maxS += (target - maxS) * (moved ? 1 : 0.25);
+    }
+    // skala warna otomatis: persentil 95 dari semua tampilan aktif, dihaluskan terhadap waktu
+    const srcs = visible.map((p) => p.p95);
+    if (fog.on) srcs.push(fog.p95);
+    if (srcs.length) {
+      const target = Math.max(2, Math.max(...srcs) * 1.15);
+      maxS += (target - maxS) * (moved ? 1 : Math.min(1, real * 2.5));
     }
     const vmax = FV.vmax > 0 ? FV.vmax : maxS;
     const ci = Math.max(0, COLORMAPS.indexOf(FV.cmap));
@@ -475,7 +490,9 @@ export function createFlowViz(renderer, scene, app, flow, container) {
       u.uCmap.value = ci;
       u.uMapAlpha.value = FV.mapAlpha;
     }
-    legend(visible.length > 0, FV.cmap, vmax, useAvg);
+    // legenda khusus bila yang tampil hanya kabut zona mati
+    legend(visible.length > 0 || fog.on, FV.cmap, vmax, useAvg, fog.on && fog.mode === 'dead' && visible.length === 0);
+    currentMax = vmax;
   }
 
   /** Dipanggil SETELAH render utama: pass GPU untuk frame berikutnya. */
@@ -505,5 +522,15 @@ export function createFlowViz(renderer, scene, app, flow, container) {
     [lastReal, lastSim] = save;
   }
 
-  return { update, runPasses, setQuality, planes, debugAdvance };
+  return {
+    update,
+    runPasses,
+    setQuality,
+    planes,
+    debugAdvance,
+    /** batas atas skala warna yang sedang dipakai (cm/s) */
+    get vmax() {
+      return currentMax;
+    },
+  };
 }

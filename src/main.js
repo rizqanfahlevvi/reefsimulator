@@ -205,6 +205,9 @@ window.__sim = {
   },
   app,
   flow,
+  get world() {
+    return world;
+  },
   setView: (k) => world?.setView(k),
   /** majukan animasi garis arus n langkah (diagnostik) */
   flowAdvance: (n, dt) => world?.fviz.debugAdvance(n, dt),
