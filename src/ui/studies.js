@@ -85,7 +85,7 @@ export const STUDIES = [
     title: 'Peta zona mati tank & filter',
     desc: 'Di mana detritus kemungkinan mengendap?',
     watch:
-      'Tunggu ±30 detik simulasi. Kabut merah–oranye = arus rata-rata < 1 cm/s. Lihat metrik "Zona mati". Coba ubah arah duckbill atau nyalakan wavemaker (tab Arus → Duckbill & wavemaker), lalu bandingkan.',
+      'Tunggu ±30 detik simulasi. Kabut merah–oranye = arus rata-rata < 1 cm/s. Lihat metrik "Zona mati". Coba ubah arah duckbill atau nyalakan wavemaker (tab Tank → Duckbill & wavemaker), lalu bandingkan.',
     view: 'iso',
     setup(a) {
       cleanView(a, false);
@@ -99,7 +99,7 @@ export const STUDIES = [
     title: 'Arah jet duckbill',
     desc: 'Ke mana arus return benar-benar mengalir di dalam tank?',
     watch:
-      'Bidang tegak dari depan: garis arus memperlihatkan sirkulasi, kabut merah = jet kuat. Geser "Duckbill mendatar/naik-turun" (tab Arus → Duckbill & wavemaker) dan amati perubahannya setelah ±30 detik.',
+      'Bidang tegak dari depan: garis arus memperlihatkan sirkulasi, kabut merah = jet kuat. Geser "Arah duckbill" (tab Tank → Duckbill & wavemaker) dan amati perubahannya setelah ±30 detik.',
     view: 'front',
     setup(a) {
       cleanView(a, false);

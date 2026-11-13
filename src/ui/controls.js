@@ -49,8 +49,8 @@ export function buildControls(h) {
     { g: 2, id: 'zrim', label: 'Tinggi bibir surface skimmer (tipe tetap)', min: 22, max: 29.5, step: 0.1, d: 1, unit: ' cm', get: () => P().zrim, set: (v) => { P().zrim = v; markSiphon(); } },
     { g: 2, id: 'sv', label: 'Ball valve U-pipe', min: 5, max: 100, step: 1, d: 0, unit: '%', get: () => P().sv * 100, set: (v) => (P().sv = v / 100) },
     { g: 4, id: 'clog', label: 'Kapas kotor', min: 0, max: 95, step: 1, d: 0, unit: '%', get: () => P().clog * 100, set: (v) => (P().clog = v / 100) },
-    { g: 3, id: 'nyaw', label: 'Duckbill mendatar (0° lurus ke kiri, + ke depan)', min: -90, max: 90, step: 5, d: 0, unit: '°', get: () => app.NZL.yaw, set: (v) => (app.NZL.yaw = v) },
-    { g: 3, id: 'npit', label: 'Duckbill naik/turun (+ ke atas)', min: -60, max: 45, step: 5, d: 0, unit: '°', get: () => app.NZL.pitch, set: (v) => (app.NZL.pitch = v) },
+    { g: 3, id: 'nyaw', label: 'Arah duckbill mendatar (0° lurus ke kiri, + ke depan)', min: -90, max: 90, step: 5, d: 0, unit: '°', get: () => app.NZL.yaw, set: (v) => (app.NZL.yaw = v) },
+    { g: 3, id: 'npit', label: 'Arah duckbill naik/turun (+ ke atas)', min: -60, max: 45, step: 5, d: 0, unit: '°', get: () => app.NZL.pitch, set: (v) => (app.NZL.pitch = v) },
     { g: 3, id: 'sliceY', label: 'Tinggi bidang potong mendatar', min: 1, max: 28, step: 0.5, d: 1, unit: ' cm', get: () => app.sliceY, set: (v) => (app.sliceY = v) },
     { g: 3, id: 'filterZ', label: 'Posisi bidang filter (dari kaca belakang filter)', min: 0.5, max: 9.5, step: 0.5, d: 1, unit: ' cm', get: () => app.FV.filterZ, set: (v) => (app.FV.filterZ = v) },
     { g: 3, id: 'sliceZ', label: 'Posisi bidang tegak (dari kaca belakang)', min: 1, max: 24, step: 0.5, d: 1, unit: ' cm', get: () => app.FV.sliceZ, set: (v) => (app.FV.sliceZ = v) },
@@ -301,7 +301,6 @@ export function buildControls(h) {
   function applyView() {
     h.applyView();
     const { V } = app;
-    for (const k of ['wq', 'wyaw', 'wpit', 'wy']) U[k].inp.disabled = !V.wm;
     U.sliceY.inp.disabled = !(V.planeOn && app.FV.orient === 'h');
     U.sliceZ.inp.disabled = !(V.planeOn && app.FV.orient === 'v');
     U.filterZ.inp.disabled = !V.filterPlane;
@@ -319,7 +318,6 @@ export function buildControls(h) {
       fb.textContent = on ? 'Tampilan penuh' : 'Peta arus';
       fb.classList.toggle('active', on);
     }
-    for (const k of ['nyaw', 'npit']) U[k].inp.disabled = !V.cfd;
   }
 
   function syncUI() {
@@ -414,6 +412,13 @@ export function buildControls(h) {
     savedTxt.textContent = `Pengaturan tersimpan otomatis di browser ini · ${String(t.getHours()).padStart(2, '0')}.${String(t.getMinutes()).padStart(2, '0')}`;
   }
 
+  const nozzleNote = el('p', {
+    className: 'note',
+    style: 'margin-top:6px',
+    textContent:
+      'Arah duckbill dan wavemaker bisa diatur kapan saja. Pengaruhnya pada pola arus terlihat di tab Arus (bidang potong, kabut 3D, jejak) setelah ±30 detik simulasi; level dan debit hidrolik tidak berubah.',
+  });
+
   /* ================= tata letak: tab + grup ringkas ================= */
   const LAYOUT = [
     {
@@ -424,6 +429,7 @@ export function buildControls(h) {
         ['Pompa return & auto-off', ['s_spd', 's_qmax', 's_hmax', 's_rv', 't_fswHi', 't_fswLo']],
         ['Siphon U-pipe', ['pipe', 'skt', 's_zd', 's_zin', 's_kb', 's_zrim', 's_sv', 't_venturi', 't_box']],
         ['Filter & pengaman', ['s_clog', 't_hole', 't_ato']],
+        ['Duckbill & wavemaker', ['s_nyaw', 's_npit', 't_wm', 's_wq', 's_wyaw', 's_wpit', 's_wy', nozzleNote]],
       ],
     },
     {
@@ -434,7 +440,6 @@ export function buildControls(h) {
         ['Bidang potong (peta + garis arus)', ['t_planeOn', 'fvOrient', 's_sliceY', 's_sliceZ', 't_filterPlane', 's_filterZ', 's_mapAlpha', 's_anim']],
         ['Kabut kecepatan 3D', ['t_fog', 'fvFogMode', 's_fogDensity']],
         ['Warna & skala', ['fvValue', 'fvCmap', 's_vmax']],
-        ['Duckbill & wavemaker', ['s_nyaw', 's_npit', 't_wm', 's_wq', 's_wyaw', 's_wpit', 's_wy']],
       ],
     },
     { id: 'studi', title: 'Studi', content: [] },
