@@ -68,6 +68,7 @@ src/
     scene/*.js          ruangan, tank, aquascape, ikan, peralatan, air, siphon, partikel, jejak, label
   ui/                   kontrol + tab, metrik/status, grafik, listrik, studi terpandu
   diag.js               log kejadian & error global untuk laporan diagnostik (lokal)
+  render/hotspots.js    area sentuh komponen 3D, pemilihan dengan sinar, sorotan
   analysis/             saran (advisor), profil biota, pustaka, titik seimbang, uji pulsa, laporan Markdown
 tests/                  Vitest: regresi hidrolik vs versi 1, solver Poisson, engine CFD, ketahanan klien
 ```
@@ -89,6 +90,14 @@ kecepatan simulasi; jarumnya berputar sekali per menit simulasi. Ketuk jam untuk
 tidak sanggup mengejar kecepatan yang dipilih, dan `arus tertinggal mm:ss (N%)` bila simulasi arus (CFD), yang dihitung
 terpisah, berjalan lebih lambat dari jam (wajar pada kecepatan tinggi). Simulasi hidrolik kini mengikuti jam nyata sampai
 4 fps (`src/ui/clock.js`, `src/sim.js`).
+
+**Komponen 3D yang bisa diketuk** (`src/render/hotspots.js`, `src/ui/inspector.js`): intake siphon, U-pipe & ujung
+buang, duckbill, wavemaker, pompa return, kapas, dan ATO. Ketuk komponennya (atau penanda titiknya) → komponen tersorot
+dan muncul kartu berisi info langsung (debit, level, status) dan pengaturan yang relevan. Kontrol di kartu adalah cermin
+kontrol panel (nilai, logika, simpan otomatis, dan log tetap satu jalur). Di desktop kartu ada di pojok tampilan 3D; di
+HP/tablet kartu menjadi lembar di bawah layar supaya tank tetap bisa diketuk dan diputar. Menyeret tetap memutar kamera;
+hanya ketukan singkat tanpa geser yang memilih komponen. Penanda titik bisa dimatikan di tab Tampilan; komponen yang
+sedang mati (wavemaker, ATO) ditandai "+". Tahap berikutnya: menyeret duckbill/wavemaker langsung untuk mengarahkannya.
 
 Kontrol di tab **Arus** tidak pernah dikunci. Bila tampilannya sedang mati (kontrol tampak redup), mengubah kontrol
 itu langsung menyalakan tampilan yang dibutuhkan (mis. memilih besaran "Umur air" menyalakan kabut 3D, menggeser tinggi

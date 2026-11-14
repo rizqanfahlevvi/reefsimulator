@@ -57,6 +57,7 @@ export const SPEC = {
     filterPlane: bool,
     fog: bool,
     wm: bool,
+    hot: bool,
   },
   NZL: { yaw: num(-90, 90), pitch: num(-60, 45) },
   WM: { q: num(300, 3000), yaw: num(-80, 80), pitch: num(-45, 45), y: num(5, 25) },

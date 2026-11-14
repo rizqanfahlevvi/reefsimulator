@@ -95,6 +95,7 @@ export function buildControls(h) {
     { g: 6, id: 'flow', view: true, label: 'Penanda aliran di dalam pipa (siphon & selang return)' },
     { g: 6, id: 'clear', view: true, label: 'Pipa bening (lihat air dan udara di dalam)' },
     { g: 6, id: 'label', view: true, label: 'Label nama' },
+    { g: 6, id: 'hot', view: true, label: 'Penanda komponen yang bisa diketuk (titik)' },
   ];
 
   const U = {};
@@ -545,7 +546,7 @@ export function buildControls(h) {
       title: 'Tampilan',
       groups: [
         ['Ornamen', ['t_fish', 't_coral', 't_rock', 't_sand', 't_lamp', 't_room']],
-        ['Simulasi & grafis', ['s_sp', 'qual', 's_tint', 't_flow', 't_clear', 't_label']],
+        ['Simulasi & grafis', ['s_sp', 'qual', 's_tint', 't_flow', 't_clear', 't_label', 't_hot']],
         ['Skimmer, latar & lampu', ['t_dark', 'sktype', 'bgsel', 'bgColor', 'lampsel', 's_li']],
         ['Laporan masalah (diagnostik)', [h.diagBox]],
       ],

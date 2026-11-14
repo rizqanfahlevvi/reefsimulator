@@ -20,6 +20,7 @@ export const DEFAULT_VIEW = Object.freeze({
   filterPlane: false, // bidang potong filter
   fog: false, // kabut kecepatan 3D (volume rendering)
   wm: false,
+  hot: true, // penanda titik di komponen yang bisa diketuk
 });
 
 export const app = {

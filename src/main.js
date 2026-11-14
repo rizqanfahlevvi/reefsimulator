@@ -14,6 +14,7 @@ import { drawCharts } from './ui/charts.js';
 import { buildDiagnostics } from './ui/diagnostics.js';
 import { buildAnalysis } from './ui/analysis.js';
 import { buildClock } from './ui/clock.js';
+import { buildInspector } from './ui/inspector.js';
 import { toast } from './ui/toast.js';
 import { diag, logEvent, errorText, installGlobalHandlers } from './diag.js';
 import { $ } from './util/format.js';
@@ -133,6 +134,9 @@ const clock = buildClock({
     hooks.notify(`Kecepatan simulasi ${v}×`);
   },
 });
+
+/* ketuk komponen di tampilan 3D → sorotan + kartu pengaturan */
+const inspector = world ? buildInspector({ world }) : null;
 
 /* tab Analisis: saran otomatis, titik seimbang, uji pulsa, laporan untuk Claude */
 const analysisUI = buildAnalysis(ui.sections.analisis, {
@@ -319,6 +323,7 @@ function frame(now) {
     guarded('Render', () => {
       world.update(real, simdt);
       world.render();
+      inspector?.frame(real);
     });
   }
   // timer UI memakai waktu nyata (bukan dt yang dibatasi) supaya tetap responsif di perangkat lambat
@@ -331,6 +336,7 @@ function frame(now) {
     ui.setDyeStatus(flow.dyeStatus());
     diagUI.update();
     clock.update(uiDt);
+    inspector?.update();
     guarded('Analisis', () => analysisUI.update(uiDt));
     if (elecTick++ % 5 === 0) elec.update();
   }
@@ -381,6 +387,9 @@ window.__sim = {
   analysisReport: () => analysisUI.report(),
   get analysis() {
     return analysisUI;
+  },
+  get inspector() {
+    return inspector;
   },
   /** majukan animasi garis arus n langkah (diagnostik) */
   flowAdvance: (n, dt) => world?.fviz.debugAdvance(n, dt),
