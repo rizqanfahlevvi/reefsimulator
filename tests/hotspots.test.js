@@ -60,3 +60,36 @@ describe('area sentuh komponen', () => {
     expect(hotBoxes(app).wm[0][2]).toBeCloseTo(w0 + 6, 5);
   });
 });
+
+describe('tahap 2: seret untuk mengarahkan', () => {
+  it('anglesOf adalah kebalikan dirOf', async () => {
+    const { anglesOf } = await import('../src/render/hotspots.js');
+    const { dirOf } = await import('../src/layout.js');
+    for (const [y, p] of [[0, 0], [20, 15], [-90, -60], [80, 45], [-45, 30]]) {
+      const a = anglesOf(dirOf(y, p));
+      expect(a.yaw).toBeCloseTo(y, 6);
+      expect(a.pitch).toBeCloseTo(p, 6);
+    }
+  });
+
+  it('menunjuk titik → sudut dibulatkan ke langkah slider & dibatasi rentangnya', async () => {
+    const { AIM, aimAngles, aimGeometry } = await import('../src/render/hotspots.js');
+    const app = makeApp();
+    const pv = AIM.nozzle.pivot(app);
+    // lurus ke kiri, sedikit naik
+    expect(aimAngles(AIM.nozzle, pv, [pv[0] - 10, pv[1] + 1.7, pv[2]])).toEqual({ yaw: 0, pitch: 10 });
+    // ke depan (+z) → yaw 90
+    expect(aimAngles(AIM.nozzle, pv, [pv[0], pv[1], pv[2] + 10]).yaw).toBe(90);
+    // ke belakang-kanan (di luar rentang) → sisi terdekat, bukan melompat
+    expect(aimAngles(AIM.nozzle, pv, [pv[0] + 10, pv[1], pv[2] + 2]).yaw).toBe(90);
+    expect(aimAngles(AIM.nozzle, pv, [pv[0] + 10, pv[1], pv[2] - 2]).yaw).toBe(-90);
+    // terlalu dekat titik putar → diabaikan (tidak bergetar)
+    expect(aimAngles(AIM.nozzle, pv, [pv[0] - 1, pv[1], pv[2]])).toBeNull();
+    // menunjuk bola pegangan sendiri → sudut tetap
+    const g = aimGeometry(app, 'nozzle');
+    expect(aimAngles(AIM.nozzle, g.pivot, g.knob)).toEqual({ yaw: 20, pitch: 15 });
+    // wavemaker: pitch dibatasi ±45
+    const w = AIM.wm.pivot(app);
+    expect(aimAngles(AIM.wm, w, [w[0] - 5, w[1] + 20, w[2]]).pitch).toBe(45);
+  });
+});

@@ -8,13 +8,29 @@
  */
 import * as THREE from 'three';
 import { app, waterLitres } from '../state.js';
-import { HOT_KEYS, hotBoxes, hotAnchor, pickHot } from '../render/hotspots.js';
+import { HOT_KEYS, AIM, hotBoxes, hotAnchor, pickHot, aimGeometry } from '../render/hotspots.js';
 import { rimOf, skimmerActive } from '../physics/hydraulics.js';
 import { GEO } from '../physics/constants.js';
 import { logEvent } from '../diag.js';
 import { el, fmt, $ } from '../util/format.js';
+import { createAim } from './aim.js';
 
 const L = (v) => Math.round(v * 3.6) + ' L/jam';
+
+/**
+ * Data arus utama untuk komponen pengarah arus: berubah mengikuti CFD setelah duckbill/wavemaker
+ * diarahkan (butuh ±30 dtk simulasi arus untuk stabil, ditandai "menyesuaikan").
+ */
+function flowLine({ V, flowStats }, x = {}) {
+  const fs = flowStats || {};
+  if (!V.cfd) return ' · simulasi arus mati';
+  if (fs.mean === undefined) return '';
+  return (
+    ` · zona mati ${Math.round(fs.dead)}% · arus rata ${fmt(fs.mean)} cm/s` +
+    (fs.rockCells ? ` · sekitar batu ${fmt(fs.rockMean)} cm/s` : '') +
+    (x.adapting ? ' · arus menyesuaikan…' : '')
+  );
+}
 
 /** Isi kartu per komponen: judul, keterangan, info langsung, dan kontrol (id kontrol panel). */
 export const COMPONENTS = {
@@ -48,14 +64,16 @@ export const COMPONENTS = {
   nozzle: {
     title: 'Duckbill (keluaran return)',
     desc: 'Arah jet air dari filter. Pengaruhnya pada arus terlihat ±30 dtk simulasi kemudian.',
-    info: ({ S }) => `Debit return ${L(Math.max(0, S.q.r))} · tinggi ujung ${fmt(GEO.ZOUT)} cm`,
+    info: (a, x) => `Debit return ${L(Math.max(0, a.S.q.r))}` + flowLine(a, x),
     controls: ['s_nyaw', 's_npit'],
+    tip: 'Seret bola biru (atau duckbill-nya) untuk mengarahkan jet langsung di 3D.',
   },
   wm: {
     title: 'Wavemaker',
     desc: 'Pompa arus di kaca kanan untuk mengurangi zona mati.',
-    info: ({ V, WM }) => (V.wm ? `Nyala · ${WM.q} L/jam` : 'Mati — nyalakan untuk menambah arus'),
+    info: (a, x) => (a.V.wm ? `Nyala · ${a.WM.q} L/jam · tinggi ${a.WM.y} cm` + flowLine(a, x) : 'Mati — nyalakan untuk menambah arus'),
     controls: ['t_wm', 's_wq', 's_wyaw', 's_wpit', 's_wy'],
+    tip: 'Seret bola biru untuk mengarahkan; seret badan wavemaker untuk menggeser tingginya di kaca.',
   },
   pump: {
     title: 'Pompa return',
@@ -85,9 +103,9 @@ export const COMPONENTS = {
 };
 
 /**
- * @param {{world: any}} ctx world 3D (camera, renderer, hot)
+ * @param {{world: any, flow?: any}} ctx world 3D (camera, renderer, hot, aim) dan klien arus
  */
-export function buildInspector({ world }) {
+export function buildInspector({ world, flow }) {
   const view = $('view');
   const canvas = world.renderer.domElement;
   const camera = world.camera;
@@ -121,6 +139,10 @@ export function buildInspector({ world }) {
   let current = null;
   let mirrors = [];
   let infoEl = null;
+  /** Waktu CFD saat pengaturan terakhir diubah (untuk tanda "arus menyesuaikan"). */
+  let changedAt = -Infinity;
+  const touched = () => (changedAt = flow ? flow.cfdTime : 0);
+  const adapting = () => !!flow && app.V.cfd && flow.cfdTime - changedAt < 30;
 
   const panelLabel = (id) => {
     const lab = document.querySelector(`#controls label[for="${id}"]`);
@@ -132,6 +154,7 @@ export function buildInspector({ world }) {
     if (typeof spec === 'object') {
       const b = el('button', { className: 'insp-act', textContent: spec.label });
       b.addEventListener('click', () => {
+        touched();
         const [id, v] = spec.set;
         const src = $(id);
         if (!src) return;
@@ -144,20 +167,24 @@ export function buildInspector({ world }) {
     if (spec[0] === '#') {
       const src = $(spec.slice(1));
       if (!src) return null;
-      const b = el('button', { className: 'insp-act', textContent: src.textContent });
-      b.addEventListener('click', () => src.click());
+      const b = el('button', { className: 'insp-act', textContent: src.textContent, dataset: { src: spec.slice(1) } });
+      b.addEventListener('click', () => {
+        touched();
+        src.click();
+      });
       return { node: b, sync: () => (b.textContent = src.textContent) };
     }
     const src = $(spec);
     if (!src) return null;
     if (src.type === 'range') {
       const out = el('b');
-      const inp = el('input', { type: 'range', min: src.min, max: src.max, step: src.step, value: src.value });
+      const inp = el('input', { type: 'range', min: src.min, max: src.max, step: src.step, value: src.value, dataset: { src: spec } });
       const srcOut = document.querySelector(`#controls label[for="${spec}"] b`);
       let drag = false;
       inp.addEventListener('pointerdown', () => (drag = true));
       inp.addEventListener('pointerup', () => (drag = false));
       inp.addEventListener('input', () => {
+        touched();
         src.value = inp.value;
         src.dispatchEvent(new Event('input', { bubbles: true }));
         out.textContent = srcOut?.textContent || inp.value;
@@ -179,8 +206,9 @@ export function buildInspector({ world }) {
       };
     }
     if (src.type === 'checkbox') {
-      const c = el('input', { type: 'checkbox', checked: src.checked });
+      const c = el('input', { type: 'checkbox', checked: src.checked, dataset: { src: spec } });
       c.addEventListener('change', () => {
+        touched();
         src.checked = c.checked;
         src.dispatchEvent(new Event('change', { bubbles: true }));
       });
@@ -195,9 +223,10 @@ export function buildInspector({ world }) {
       };
     }
     if (src.tagName === 'SELECT') {
-      const s = el('select', {}, [...src.options].map((o) => el('option', { value: o.value, textContent: o.textContent })));
+      const s = el('select', { dataset: { src: spec } }, [...src.options].map((o) => el('option', { value: o.value, textContent: o.textContent })));
       s.value = src.value;
       s.addEventListener('change', () => {
+        touched();
         src.value = s.value;
         src.dispatchEvent(new Event('change', { bubbles: true }));
       });
@@ -241,7 +270,7 @@ export function buildInspector({ world }) {
   function sync() {
     if (!current) return;
     for (const m of mirrors) m.sync();
-    const t = COMPONENTS[current].info(app);
+    const t = COMPONENTS[current].info(app, { adapting: adapting() });
     if (infoEl.textContent !== t) infoEl.textContent = t;
   }
 
@@ -272,6 +301,37 @@ export function buildInspector({ world }) {
   canvas.addEventListener('pointercancel', up);
   document.addEventListener('keydown', (e) => e.key === 'Escape' && api.close());
 
+  /* ---------- tahap 2: seret bola/badan untuk mengarahkan ---------- */
+  const aim = createAim({
+    world,
+    getCurrent: () => current,
+    onChange: () => {
+      touched();
+      sync(); // kartu langsung mengikuti, tidak menunggu siklus UI
+    },
+  });
+
+  /** Persegi layar (px) yang mencakup kotak area sentuh komponen + bola pegangan, diperlebar 18 px. */
+  function screenZone(key, w, h) {
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    const add = (x, y, z) => {
+      v.set(x, y, z).project(camera);
+      if (v.z > 1) return;
+      const sx = ((v.x + 1) / 2) * w;
+      const sy = ((1 - v.y) / 2) * h;
+      x0 = Math.min(x0, sx);
+      y0 = Math.min(y0, sy);
+      x1 = Math.max(x1, sx);
+      y1 = Math.max(y1, sy);
+    };
+    for (const b of hotBoxes(app)[key]) for (const x of [b[0], b[1]]) for (const y of [b[2], b[3]]) for (const z of [b[4], b[5]]) add(x, y, z);
+    if (AIM[key] && !(key === 'wm' && !app.V.wm)) add(...aimGeometry(app, key).knob);
+    return x1 > x0 ? [x0 - 18, y0 - 18, x1 + 18, y1 + 18] : null;
+  }
+
   /* ---------- per frame: penanda + sorotan ---------- */
   const v = new THREE.Vector3();
   let t = 0;
@@ -288,13 +348,20 @@ export function buildInspector({ world }) {
     get current() {
       return current;
     },
+    get dragging() {
+      return aim.dragging;
+    },
     frame(dt) {
       t += dt;
       world.hot.set(current ? hotBoxes(app)[current] : null);
       world.hot.tick(t);
+      aim.frame();
       const show = app.V.hot !== false;
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
+      // area layar komponen terpilih (+ bola pegangan): penanda lain di situ disembunyikan supaya
+      // tidak menghalangi ketukan/seretan pada komponen itu (mis. penanda ATO menumpuk di wavemaker)
+      const zone = current ? screenZone(current, w, h) : null;
       for (const k of HOT_KEYS) {
         const m = markers[k];
         let vis = show && k !== current;
@@ -302,6 +369,11 @@ export function buildInspector({ world }) {
           const a = hotAnchor(app, k);
           v.set(a[0], a[1], a[2]).project(camera);
           vis = v.z > -1 && v.z < 1 && Math.abs(v.x) < 1.02 && Math.abs(v.y) < 1.02;
+          if (vis) {
+            const x = Math.round(((v.x + 1) / 2) * w);
+            const y = Math.round(((1 - v.y) / 2) * h);
+            if (zone && x > zone[0] && x < zone[2] && y > zone[1] && y < zone[3]) vis = false;
+          }
           if (vis) {
             const x = Math.round(((v.x + 1) / 2) * w);
             const y = Math.round(((1 - v.y) / 2) * h);

@@ -11,7 +11,7 @@ import { buildFish, updateFish } from './scene/fish.js';
 import { buildEquipment, RETURN_PTS } from './scene/equipment.js';
 import { buildWater, setWaterHeight } from './scene/water.js';
 import { createSiphon } from './scene/siphon.js';
-import { createHotHighlight } from './hotspots.js';
+import { createHotHighlight, createAimHandle } from './hotspots.js';
 import { buildFlowParticles, movePoints, foamAt, setDotTexture } from './scene/particles.js';
 import { buildTracers } from './scene/tracers.js';
 import { buildLabels } from './scene/labels.js';
@@ -60,6 +60,7 @@ export function createWorld(container, app, flow) {
   const labels = buildLabels(scene);
   const fviz = createFlowViz(renderer, scene, app, flow, container);
   const hot = createHotHighlight(scene); // sorotan komponen yang diketuk (lihat ui/inspector.js)
+  const aim = createAimHandle(scene); // panah + bola pegangan untuk mengarahkan duckbill/wavemaker
   const fog = createFlowFog(scene, app, flow, camera);
   renderer.info.autoReset = false; // hitung draw call render utama + pass visualisasi per frame
 
@@ -370,6 +371,7 @@ export function createWorld(container, app, flow) {
     },
     fviz,
     hot,
+    aim,
     rebuildSiphon,
     applyView,
     applyGlass,

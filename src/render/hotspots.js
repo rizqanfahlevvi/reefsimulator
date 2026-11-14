@@ -167,3 +167,123 @@ export function createHotHighlight(scene) {
     },
   };
 }
+
+/* ======================= tahap 2: seret untuk mengarahkan ======================= */
+
+const D = 180 / Math.PI;
+
+/** Kebalikan dirOf: arah → {yaw, pitch} (derajat, konvensi sama dengan slider). */
+export function anglesOf(d) {
+  const l = Math.hypot(d[0], d[1], d[2]) || 1;
+  return { yaw: Math.atan2(d[2], -d[0]) * D, pitch: Math.asin(Math.max(-1, Math.min(1, d[1] / l))) * D };
+}
+
+/**
+ * Komponen yang bisa diarahkan: titik putar, panjang paruh (pangkal panah), panjang panah,
+ * batas sudut (= batas slider), langkah (= langkah slider), dan id slider panel.
+ */
+export const AIM = {
+  nozzle: {
+    pivot: () => NOZZLE,
+    nose: 4.3,
+    len: 10,
+    yaw: [-90, 90],
+    pitch: [-60, 45],
+    step: 5,
+    ids: ['s_nyaw', 's_npit'],
+    get: (app) => app.NZL,
+  },
+  wm: {
+    pivot: (app) => [WAVEMAKER.x, app.WM.y, WAVEMAKER.z],
+    nose: 2.7,
+    len: 12,
+    yaw: [-80, 80],
+    pitch: [-45, 45],
+    step: 5,
+    ids: ['s_wyaw', 's_wpit'],
+    get: (app) => app.WM,
+    // badan wavemaker diseret naik/turun di kaca kanan
+    height: { id: 's_wy', min: 5, max: 25, step: 1 },
+  },
+};
+
+const clamp = (v, [lo, hi]) => Math.min(hi, Math.max(lo, v));
+const snap = (v, s) => Math.round(v / s) * s;
+
+/**
+ * Sudut baru dari titik yang ditunjuk jari (di bidang layar) relatif terhadap titik putar.
+ * @returns {{yaw:number, pitch:number}|null} null bila titik terlalu dekat dengan titik putar
+ */
+export function aimAngles(spec, pivot, point) {
+  const d = [point[0] - pivot[0], point[1] - pivot[1], point[2] - pivot[2]];
+  if (Math.hypot(d[0], d[1], d[2]) < 2.5) return null;
+  const a = anglesOf(d);
+  // arah ke belakang (di luar rentang yaw) → sisi terdekat
+  let yaw = a.yaw;
+  if (yaw > spec.yaw[1] || yaw < spec.yaw[0]) yaw = Math.abs(yaw - spec.yaw[1]) < Math.abs(yaw - spec.yaw[0]) ? spec.yaw[1] : spec.yaw[0];
+  return { yaw: clamp(snap(yaw, spec.step), spec.yaw), pitch: clamp(snap(a.pitch, spec.step), spec.pitch) };
+}
+
+/** Pangkal panah (ujung paruh) dan posisi bola pegangan untuk sudut sekarang. */
+export function aimGeometry(app, key) {
+  const spec = AIM[key];
+  const p = spec.pivot(app);
+  const { yaw, pitch } = spec.get(app);
+  const d = dirOf(yaw, pitch);
+  const start = [p[0] + d[0] * spec.nose, p[1] + d[1] * spec.nose, p[2] + d[2] * spec.nose];
+  const knob = [start[0] + d[0] * spec.len, start[1] + d[1] * spec.len, start[2] + d[2] * spec.len];
+  return { pivot: p, dir: d, start, knob };
+}
+
+/** Panah arah + bola pegangan; selalu terlihat (di atas kaca/batu) seperti gizmo. */
+export function createAimHandle(scene) {
+  const g = new THREE.Group();
+  g.visible = false;
+  g.renderOrder = 12;
+  scene.add(g);
+  // toneMapped: false → warna sama dengan penanda HTML (tidak dipucatkan tone mapping ACES)
+  const blue = new THREE.MeshBasicMaterial({ color: 0x2a78d6, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false, toneMapped: false });
+  const shaftM = new THREE.MeshBasicMaterial({ color: 0x2a78d6, transparent: true, opacity: 0.8, depthTest: false, depthWrite: false, toneMapped: false });
+  const white = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false, side: THREE.BackSide, toneMapped: false });
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1, 10), shaftM);
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.4, 16), shaftM);
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), blue);
+  const ring = new THREE.Mesh(new THREE.SphereGeometry(1.28, 20, 14), white);
+  for (const m of [shaft, cone, ring, knob]) {
+    m.renderOrder = 12;
+    g.add(m);
+  }
+  knob.renderOrder = 13;
+  const up = new THREE.Vector3(0, 1, 0);
+  const v = new THREE.Vector3();
+  const q = new THREE.Quaternion();
+  return {
+    /**
+     * @param {{start:number[], knob:number[], dir:number[]}|null} geo
+     * @param {boolean} active sedang diseret
+     * @param {number} cmPerPx ukuran 1 px layar di posisi bola (cm) → bola & panah tetap ±11 px di layar
+     */
+    set(geo, active = false, cmPerPx = 0.09) {
+      g.visible = !!geo;
+      if (!geo) return;
+      const [sx, sy, sz] = geo.start;
+      const [kx, ky, kz] = geo.knob;
+      v.set(kx - sx, ky - sy, kz - sz);
+      const len = v.length();
+      q.setFromUnitVectors(up, v.normalize());
+      const r = Math.max(0.5, 11 * cmPerPx) * (active ? 1.25 : 1); // jari-jari bola (cm)
+      const t = Math.max(0.6, r / 1.1); // skala ketebalan panah & kerucut
+      const back = 1.9 * r; // panah berhenti di depan bola
+      shaft.quaternion.copy(q);
+      shaft.scale.set(t, Math.max(0.01, len - back - 0.7 * t), t);
+      shaft.position.set(sx + v.x * (len - back) * 0.5, sy + v.y * (len - back) * 0.5, sz + v.z * (len - back) * 0.5);
+      cone.quaternion.copy(q);
+      cone.scale.setScalar(t);
+      cone.position.set(kx - v.x * back, ky - v.y * back, kz - v.z * back);
+      knob.position.set(kx, ky, kz);
+      ring.position.set(kx, ky, kz);
+      knob.scale.setScalar(r);
+      ring.scale.setScalar(r);
+    },
+  };
+}

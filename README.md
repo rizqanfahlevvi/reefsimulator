@@ -68,7 +68,7 @@ src/
     scene/*.js          ruangan, tank, aquascape, ikan, peralatan, air, siphon, partikel, jejak, label
   ui/                   kontrol + tab, metrik/status, grafik, listrik, studi terpandu
   diag.js               log kejadian & error global untuk laporan diagnostik (lokal)
-  render/hotspots.js    area sentuh komponen 3D, pemilihan dengan sinar, sorotan
+  render/hotspots.js    area sentuh komponen 3D, pemilihan dengan sinar, sorotan, panah pengarah
   analysis/             saran (advisor), profil biota, pustaka, titik seimbang, uji pulsa, laporan Markdown
 tests/                  Vitest: regresi hidrolik vs versi 1, solver Poisson, engine CFD, ketahanan klien
 ```
@@ -97,7 +97,16 @@ dan muncul kartu berisi info langsung (debit, level, status) dan pengaturan yang
 kontrol panel (nilai, logika, simpan otomatis, dan log tetap satu jalur). Di desktop kartu ada di pojok tampilan 3D; di
 HP/tablet kartu menjadi lembar di bawah layar supaya tank tetap bisa diketuk dan diputar. Menyeret tetap memutar kamera;
 hanya ketukan singkat tanpa geser yang memilih komponen. Penanda titik bisa dimatikan di tab Tampilan; komponen yang
-sedang mati (wavemaker, ATO) ditandai "+". Tahap berikutnya: menyeret duckbill/wavemaker langsung untuk mengarahkannya.
+sedang mati (wavemaker, ATO) ditandai "+".
+
+**Seret untuk mengarahkan** (`src/ui/aim.js`): saat duckbill atau wavemaker dipilih, muncul panah arah dengan bola biru
+(ukurannya tetap di layar). Seret bola (atau badan duckbill) → arah jet mengikuti jari di bidang layar; sudut dibulatkan
+ke langkah slider (5°) dan dibatasi rentang slider. Seret badan wavemaker → tingginya bergeser di kaca (5–25 cm). Nilai
+dikirim lewat slider panel, sehingga parameter, model 3D, sumber jet di CFD, metrik utama (mis. zona mati), saran di tab
+Analisis, simpan otomatis, dan log berubah lewat satu jalur. Kartu duckbill/wavemaker menampilkan data arus utama
+(zona mati, arus rata-rata, arus di sekitar batu) dengan tanda "arus menyesuaikan…" selama ±30 dtk simulasi arus setelah
+diubah. Listener seret berjalan di fase capture sebelum OrbitControls dan hanya mengambil alih bila jari mengenai
+pegangan; penanda komponen lain yang menumpuk di area komponen terpilih disembunyikan sementara.
 
 Kontrol di tab **Arus** tidak pernah dikunci. Bila tampilannya sedang mati (kontrol tampak redup), mengubah kontrol
 itu langsung menyalakan tampilan yang dibutuhkan (mis. memilih besaran "Umur air" menyalakan kabut 3D, menggeser tinggi

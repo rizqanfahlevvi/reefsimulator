@@ -136,7 +136,7 @@ const clock = buildClock({
 });
 
 /* ketuk komponen di tampilan 3D → sorotan + kartu pengaturan */
-const inspector = world ? buildInspector({ world }) : null;
+const inspector = world ? buildInspector({ world, flow }) : null;
 
 /* tab Analisis: saran otomatis, titik seimbang, uji pulsa, laporan untuk Claude */
 const analysisUI = buildAnalysis(ui.sections.analisis, {
