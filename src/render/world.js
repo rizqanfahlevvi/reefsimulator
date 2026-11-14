@@ -30,7 +30,7 @@ const LAMP = {
 
 export function createWorld(container, app, flow) {
   const ctx = createContext(container);
-  const { renderer, scene, camera, controls, hemi, sun, led, envTex } = ctx;
+  const { renderer, scene, camera, controls, hemi, sun, led } = ctx;
   const tex = createTextures();
   setDotTexture(tex.dot);
   const M = createMaterials(tex);
@@ -68,14 +68,15 @@ export function createWorld(container, app, flow) {
    * Env map dipasang langsung ke material (bukan scene.environment) karena three r163+
    * mengabaikan envMapIntensity per material bila memakai scene.environment.
    */
-  for (const k of ['glass', 'baffle', 'gEdge']) M[k].userData.env = ctx.glassEnv; // pantulan jendela hanya di kaca
+  for (const k of ['glass', 'baffle', 'gEdge']) M[k].userData.envKind = 'glass'; // pantulan jendela hanya di kaca
+  const envFor = (m) => (m.userData.envKind === 'glass' ? ctx.glassEnv : ctx.envTex);
   const envMats = new Set();
   function attachEnv(root) {
     root.traverse((o) => {
       const mats = o.material ? [].concat(o.material) : [];
       for (const m of mats) {
         if (m.isMeshStandardMaterial && !envMats.has(m)) {
-          m.envMap = m.userData.env || envTex;
+          m.envMap = envFor(m);
           m.userData.e0 = m.envMapIntensity;
           m.needsUpdate = true;
           envMats.add(m);
@@ -100,6 +101,14 @@ export function createWorld(container, app, flow) {
     tracers.setPointScale(renderer.domElement.height);
   }
 
+  /**
+   * Kabut 3D adalah beban GPU terberat (ray marching per piksel). Di layar sentuh beresolusi tinggi
+   * langkah sinarnya satu tingkat lebih kasar; tiap kali context WebGL hilang ditambah satu lagi.
+   */
+  const touchHiDpi = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches && DPR >= 2;
+  let fogStrain = 0;
+  const fogLevel = (l) => Math.min(3, l + (touchHiDpi ? 1 : 0) + fogStrain);
+
   function setQuality(l) {
     qLevel = l;
     renderer.setPixelRatio(Math.min(DPR, [2, 1.5, 1, 1][l]));
@@ -109,7 +118,7 @@ export function createWorld(container, app, flow) {
       ctx.markShadowsDirty();
     }
     fviz.setQuality(l);
-    fog.setQuality(l);
+    fog.setQuality(fogLevel(l));
     if (lite !== isLite) {
       isLite = lite;
       shaderQuality.caustics = !lite;
@@ -117,6 +126,21 @@ export function createWorld(container, app, flow) {
       M.rock.needsUpdate = true;
     }
     resize();
+  }
+
+  /**
+   * Context WebGL pulih: three.js mengunggah ulang geometri & tekstur biasa, tetapi isi render target
+   * hilang — peta pantulan (PMREM), peta bayangan statis, partikel garis arus. Semua dibuat ulang.
+   */
+  function onContextRestored() {
+    ctx.rebuildEnv();
+    for (const m of envMats) {
+      m.envMap = envFor(m);
+      m.needsUpdate = true;
+    }
+    ctx.markShadowsDirty();
+    fviz.reset();
+    fog.invalidate();
   }
 
   function rebuildSiphon() {
@@ -145,6 +169,7 @@ export function createWorld(container, app, flow) {
   const applyBg = () => applyBackground(tank, app.LOOK);
   applyGlass();
   applyBg();
+  fog.setQuality(fogLevel(qLevel)); // termasuk tambahan untuk layar sentuh beresolusi tinggi
 
   let tt = 0;
   let lampVisible = null;
@@ -372,6 +397,15 @@ export function createWorld(container, app, flow) {
     fviz,
     hot,
     aim,
+    onContextRestored,
+    /** Tambahan kekasaran langkah kabut (0–3) setelah GPU kewalahan. */
+    setFogStrain(n) {
+      fogStrain = Math.max(0, Math.min(3, n));
+      fog.setQuality(fogLevel(qLevel));
+    },
+    get fogStep() {
+      return fogLevel(qLevel);
+    },
     rebuildSiphon,
     applyView,
     applyGlass,

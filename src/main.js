@@ -66,6 +66,57 @@ await initWorld();
 flow.start();
 
 let autoQuality = app.quality === 'a';
+
+/*
+ * GPU kewalahan → context WebGL hilang. Beban diturunkan bertahap dan diingat di perangkat ini
+ * (lokal, tidak dikirim ke mana pun; turun satu tingkat per hari tanpa kejadian baru):
+ *   1: kualitas minimal Sedang + kabut diringankan · 2: Hemat (tanpa bayangan) · 3: kabut 3D dimatikan.
+ */
+const GPU_KEY = 'reefsim:gpu';
+const STRAIN_QUALITY = [0, 2, 3, 3];
+function loadStrain() {
+  try {
+    const g = JSON.parse(localStorage.getItem(GPU_KEY) || 'null');
+    // turun satu tingkat per hari tanpa kejadian baru → perangkat tidak terjebak di mode Hemat
+    if (g) return Math.max(0, Math.min(3, (g.s | 0) - Math.floor((Date.now() - g.t) / 864e5)));
+  } catch {
+    /* localStorage tidak tersedia */
+  }
+  return 0;
+}
+function saveStrain(s) {
+  try {
+    localStorage.setItem(GPU_KEY, JSON.stringify({ s, t: Date.now() }));
+  } catch {
+    /* abaikan */
+  }
+}
+function clearStrain() {
+  try {
+    localStorage.removeItem(GPU_KEY);
+  } catch {
+    /* abaikan */
+  }
+}
+let gpuStrain = loadStrain();
+diag.gpu.strain = gpuStrain;
+/** Terapkan tingkat mode ringan; mengembalikan keterangan singkat untuk pengguna. */
+function applyStrain(runtime) {
+  diag.gpu.strain = gpuStrain;
+  if (!world) return '';
+  world.setFogStrain(gpuStrain);
+  const min = STRAIN_QUALITY[gpuStrain];
+  if (world.quality < min) world.setQuality(min);
+  const names = ['Tinggi', 'Tinggi', 'Sedang', 'Hemat'];
+  let msg = `GPU HP kewalahan — kualitas grafis ${names[world.quality]}, kabut 3D diringankan`;
+  if (gpuStrain >= 3 && runtime && app.V.fog) {
+    app.V.fog = false;
+    ui.applyView();
+    ui.syncUI();
+    msg = 'GPU HP kewalahan berulang — kabut 3D dimatikan sementara (nyalakan lagi di tab Arus bila perlu)';
+  }
+  return msg;
+}
 const hooks = {
   rebuildSiphon: () => world?.rebuildSiphon(),
   applyView: () => world?.applyView(),
@@ -89,6 +140,7 @@ const hooks = {
     saveEnabled = false;
     clearTimeout(saveTimer);
     clearSettings();
+    clearStrain();
     location.reload();
   },
 };
@@ -161,9 +213,25 @@ document.querySelectorAll('#vbtn button[data-v]').forEach((b) => b.addEventListe
 
 if (world) {
   const cv = world.renderer.domElement;
-  cv.addEventListener('webglcontextlost', () => logEvent('error', 'WebGL context hilang (GPU direset / memori grafis penuh)'));
-  cv.addEventListener('webglcontextrestored', () => logEvent('info', 'WebGL context pulih'));
+  cv.addEventListener('webglcontextlost', () => {
+    diag.gpu.lost++;
+    const fogOn = app.V.cfd && app.V.fog;
+    logEvent(
+      'error',
+      `WebGL context hilang (GPU direset / memori grafis penuh) · kualitas ${world.quality} · ${cv.width}×${cv.height} px · kabut ${fogOn ? 'nyala' : 'mati'}` +
+        (study ? ' · studi ' + study.def.title : ''),
+    );
+  });
+  cv.addEventListener('webglcontextrestored', () => {
+    world.onContextRestored(); // pantulan, bayangan, partikel, kabut dibuat ulang
+    gpuStrain = Math.min(3, gpuStrain + 1);
+    saveStrain(gpuStrain);
+    const msg = applyStrain(true);
+    logEvent('info', 'WebGL context pulih · ' + msg);
+    toast(msg, 5000);
+  });
   if (!autoQuality) world.setQuality(+app.quality);
+  if (gpuStrain > 0) logEvent('info', 'Mode ringan GPU tingkat ' + gpuStrain + ' (context WebGL pernah hilang di perangkat ini) · ' + applyStrain(false));
   world.rebuildSiphon();
   window.addEventListener('resize', world.resize);
   new ResizeObserver(world.resize).observe(view);
@@ -237,6 +305,7 @@ const studies = buildStudies(ui.studiesRoot, {
     refreshAll();
     if (def.view) world?.setView(def.view);
     studies.show(def);
+    toast('Studi dimulai: ' + def.title); // terlihat di tampilan 3D meski panel sedang digulir
   },
   end() {
     if (!study) return;

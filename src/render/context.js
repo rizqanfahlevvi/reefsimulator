@@ -55,65 +55,81 @@ export function createContext(container) {
   controls.minDistance = 22;
   controls.maxDistance = 260;
 
-  /* lingkungan pantulan: ruangan sederhana dengan jendela & lampu plafon terang */
-  const es = new THREE.Scene();
-  es.add(new THREE.Mesh(new THREE.BoxGeometry(220, 130, 220), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.55, 0.58, 0.6), side: THREE.BackSide })));
-  const pan = (w, h, x, y, z, rx, ry, col) => {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide }));
-    m.position.set(x, y, z);
-    m.rotation.set(rx, ry, 0);
-    es.add(m);
-  };
-  pan(110, 70, 0, 63, 10, Math.PI / 2, 0, new THREE.Color(5, 5, 5));
-  pan(80, 60, -108, 12, 0, 0, Math.PI / 2, new THREE.Color(3, 3.3, 3.8));
-  pan(60, 40, 40, 20, 108, 0, 0, new THREE.Color(1.6, 1.5, 1.3));
-  pan(220, 220, 0, -64, 0, Math.PI / 2, 0, new THREE.Color(0.25, 0.19, 0.14));
-  const pm = new THREE.PMREMGenerator(renderer);
-  const envTex = pm.fromScene(es, 0.03).texture;
-  const dispose = (root) =>
-    root.traverse((o) => {
-      if (o.geometry) o.geometry.dispose();
-      if (o.material) o.material.dispose();
-    });
-  dispose(es);
-  scene.environment = envTex;
-
   /*
-   * Lingkungan pantulan khusus kaca: ruangan yang sama + jendela berkisi di sisi penonton.
-   * Pantulan jendela yang bergeser saat kamera diputar membuat kaca terasa hidup; dipisah dari
-   * envTex supaya pencahayaan benda lain tidak ikut berubah.
+   * Peta pantulan lingkungan (PMREM). Hasilnya tekstur render target: isinya HILANG bila context
+   * WebGL hilang, jadi dibuat lewat fungsi yang bisa dipanggil ulang (lihat rebuildEnv).
    */
-  const gs = new THREE.Scene();
-  gs.add(new THREE.Mesh(new THREE.BoxGeometry(220, 130, 220), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.26, 0.27, 0.28), side: THREE.BackSide })));
-  const gpan = (w, h, x, y, z, ry, col, rx = 0) => {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide }));
-    m.position.set(x, y, z);
-    m.rotation.set(rx, ry, 0);
-    gs.add(m);
-  };
-  /**
-   * Jendela tinggi berkisi di dinding 'z+' | 'z-' | 'x+' | 'x-' (c = posisi sepanjang dinding).
-   * Dibuat sempit dan rendah: kamera melihat tank dari atas, jadi kaca memantulkan bagian bawah
-   * ruangan; jendela yang sempit tampil sebagai bercak pantulan, bukan selubung di seluruh kaca.
-   */
-  const windowOn = (wall, c, y, w, h, col, cols) => {
-    const frame = new THREE.Color(0.1, 0.1, 0.11);
-    const sgn = wall[1] === '+' ? 1 : -1;
-    const at = (u, yy, ww, hh, d, colr) =>
-      wall[0] === 'z' ? gpan(ww, hh, c + u, yy, sgn * (108 - d), 0, colr) : gpan(ww, hh, sgn * (108 - d), yy, c + u, Math.PI / 2, colr);
-    at(0, y, w, h, 0, col);
-    for (let i = 1; i < cols; i++) at(-w / 2 + (w * i) / cols, y, 2.6, h, 0.6, frame);
-    at(0, y + h * 0.14, w, 2.6, 0.6, frame);
-  };
-  gpan(120, 80, 0, 63, 10, 0, new THREE.Color(4.2, 4.2, 4.2), Math.PI / 2); // lampu plafon → kilau di tepi atas kaca
-  windowOn('z+', -66, -12, 48, 88, new THREE.Color(1.7, 1.9, 2.2), 2); // jendela di kiri-belakang penonton
-  windowOn('z-', 80, -10, 44, 82, new THREE.Color(1.4, 1.55, 1.8), 2); // jendela di seberang (terpantul di kaca samping)
-  windowOn('x-', 0, -6, 70, 70, new THREE.Color(1.8, 2.0, 2.3), 3); // cahaya dari sisi kiri
-  gpan(220, 220, 0, -64, 0, 0, new THREE.Color(0.3, 0.23, 0.17), Math.PI / 2); // lantai kayu
-  // near/far eksplisit: bawaan far = 100 akan memotong dinding ruangan (jarak 108–110)
-  const glassEnv = pm.fromScene(gs, 0.025, 0.1, 400).texture;
-  dispose(gs);
-  pm.dispose();
+  function buildEnv() {
+    /* lingkungan pantulan: ruangan sederhana dengan jendela & lampu plafon terang */
+    const es = new THREE.Scene();
+    es.add(new THREE.Mesh(new THREE.BoxGeometry(220, 130, 220), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.55, 0.58, 0.6), side: THREE.BackSide })));
+    const pan = (w, h, x, y, z, rx, ry, col) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide }));
+      m.position.set(x, y, z);
+      m.rotation.set(rx, ry, 0);
+      es.add(m);
+    };
+    pan(110, 70, 0, 63, 10, Math.PI / 2, 0, new THREE.Color(5, 5, 5));
+    pan(80, 60, -108, 12, 0, 0, Math.PI / 2, new THREE.Color(3, 3.3, 3.8));
+    pan(60, 40, 40, 20, 108, 0, 0, new THREE.Color(1.6, 1.5, 1.3));
+    pan(220, 220, 0, -64, 0, Math.PI / 2, 0, new THREE.Color(0.25, 0.19, 0.14));
+    const pm = new THREE.PMREMGenerator(renderer);
+    const envTex = pm.fromScene(es, 0.03).texture;
+    const dispose = (root) =>
+      root.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) o.material.dispose();
+      });
+    dispose(es);
+    scene.environment = envTex;
+
+    /*
+     * Lingkungan pantulan khusus kaca: ruangan yang sama + jendela berkisi di sisi penonton.
+     * Pantulan jendela yang bergeser saat kamera diputar membuat kaca terasa hidup; dipisah dari
+     * envTex supaya pencahayaan benda lain tidak ikut berubah.
+     */
+    const gs = new THREE.Scene();
+    gs.add(new THREE.Mesh(new THREE.BoxGeometry(220, 130, 220), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.26, 0.27, 0.28), side: THREE.BackSide })));
+    const gpan = (w, h, x, y, z, ry, col, rx = 0) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide }));
+      m.position.set(x, y, z);
+      m.rotation.set(rx, ry, 0);
+      gs.add(m);
+    };
+    /**
+     * Jendela tinggi berkisi di dinding 'z+' | 'z-' | 'x+' | 'x-' (c = posisi sepanjang dinding).
+     * Dibuat sempit dan rendah: kamera melihat tank dari atas, jadi kaca memantulkan bagian bawah
+     * ruangan; jendela yang sempit tampil sebagai bercak pantulan, bukan selubung di seluruh kaca.
+     */
+    const windowOn = (wall, c, y, w, h, col, cols) => {
+      const frame = new THREE.Color(0.1, 0.1, 0.11);
+      const sgn = wall[1] === '+' ? 1 : -1;
+      const at = (u, yy, ww, hh, d, colr) =>
+        wall[0] === 'z' ? gpan(ww, hh, c + u, yy, sgn * (108 - d), 0, colr) : gpan(ww, hh, sgn * (108 - d), yy, c + u, Math.PI / 2, colr);
+      at(0, y, w, h, 0, col);
+      for (let i = 1; i < cols; i++) at(-w / 2 + (w * i) / cols, y, 2.6, h, 0.6, frame);
+      at(0, y + h * 0.14, w, 2.6, 0.6, frame);
+    };
+    gpan(120, 80, 0, 63, 10, 0, new THREE.Color(4.2, 4.2, 4.2), Math.PI / 2); // lampu plafon → kilau di tepi atas kaca
+    windowOn('z+', -66, -12, 48, 88, new THREE.Color(1.7, 1.9, 2.2), 2); // jendela di kiri-belakang penonton
+    windowOn('z-', 80, -10, 44, 82, new THREE.Color(1.4, 1.55, 1.8), 2); // jendela di seberang (terpantul di kaca samping)
+    windowOn('x-', 0, -6, 70, 70, new THREE.Color(1.8, 2.0, 2.3), 3); // cahaya dari sisi kiri
+    gpan(220, 220, 0, -64, 0, 0, new THREE.Color(0.3, 0.23, 0.17), Math.PI / 2); // lantai kayu
+    // near/far eksplisit: bawaan far = 100 akan memotong dinding ruangan (jarak 108–110)
+    const glassEnv = pm.fromScene(gs, 0.025, 0.1, 400).texture;
+    dispose(gs);
+    pm.dispose();
+
+    return { envTex, glassEnv };
+  }
+  let env = buildEnv();
+  /** Buat ulang peta pantulan (setelah context WebGL pulih). */
+  function rebuildEnv() {
+    env.envTex.dispose();
+    env.glassEnv.dispose();
+    env = buildEnv();
+    return env;
+  }
 
   const hemi = new THREE.HemisphereLight(0xffffff, 0x8a7f72, LIGHT.hemi);
   scene.add(hemi);
@@ -153,5 +169,23 @@ export function createContext(container) {
     renderer.shadowMap.needsUpdate = true;
   };
 
-  return { renderer, scene, camera, controls, envTex, glassEnv, hemi, sun, led, setView, resize, markShadowsDirty };
+  return {
+    renderer,
+    scene,
+    camera,
+    controls,
+    get envTex() {
+      return env.envTex;
+    },
+    get glassEnv() {
+      return env.glassEnv;
+    },
+    rebuildEnv,
+    hemi,
+    sun,
+    led,
+    setView,
+    resize,
+    markShadowsDirty,
+  };
 }

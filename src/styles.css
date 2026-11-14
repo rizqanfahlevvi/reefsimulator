@@ -1036,3 +1036,28 @@ section[role='tabpanel'] > .card:first-child details:first-of-type {
 #aimLabel[hidden] {
   display: none;
 }
+
+/* studi: strip "sedang berjalan" di tab Studi + tombol aktif */
+.study-running {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 4px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(12, 163, 12, 0.12);
+  border: 1px solid rgba(12, 163, 12, 0.35);
+  font-size: 12.5px;
+}
+.study-running[hidden] {
+  display: none;
+}
+.study-running b {
+  flex: 1;
+}
+.study-go.running {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #fff;
+}

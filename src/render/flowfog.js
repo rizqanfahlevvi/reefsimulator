@@ -225,6 +225,11 @@ function createFogVolume(scene, app, flow, camera, spec) {
     setQuality(level) {
       mat.uniforms.uStep.value = STEP_BY_QUALITY[Math.max(0, Math.min(3, level))];
     },
+    /** Paksa tekstur volume diisi & diunggah ulang (mis. setelah context WebGL pulih). */
+    invalidate() {
+      lastKey = '';
+      tex.needsUpdate = true;
+    },
     get stats() {
       return stats;
     },
@@ -259,6 +264,9 @@ export function createFlowFog(scene, app, flow, camera) {
   return {
     update(range) {
       for (const v of vols) v.update(range);
+    },
+    invalidate() {
+      for (const v of vols) v.invalidate();
     },
     setQuality(level) {
       for (const v of vols) v.setQuality(level);

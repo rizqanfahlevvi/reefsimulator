@@ -9,6 +9,8 @@ export const diag = {
   events: [],
   errors: 0,
   fps: 0,
+  /** Context WebGL hilang (sesi ini) dan tingkat mode ringan GPU yang aktif (0–3). */
+  gpu: { lost: 0, strain: 0 },
   listeners: new Set(),
 };
 

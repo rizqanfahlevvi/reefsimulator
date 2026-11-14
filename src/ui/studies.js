@@ -187,10 +187,26 @@ export function buildStudies(root, api) {
         'Pilih skenario: parameter, tampilan, dan sudut kamera diatur otomatis. Pengaturanmu disimpan dulu dan dikembalikan saat studi diakhiri.',
     }),
   );
+  // strip "sedang berjalan" di tab Studi sendiri: banner di atas panel sering di luar layar di HP
+  const runTitle = el('b');
+  const runEnd = el('button', { className: 'study-end', textContent: 'Akhiri' });
+  runEnd.addEventListener('click', () => api.end());
+  const running = el('div', { className: 'study-running', hidden: true, role: 'status' }, [el('span', { textContent: '▶ Sedang berjalan: ' }), runTitle, runEnd]);
+  card.append(running);
+
   const list = el('div', { className: 'studies' });
+  const btns = {};
+  let activeId = null;
+  let startedAt = 0;
+  let relabel = 0;
   for (const def of STUDIES) {
     const btn = el('button', { className: 'study-go', textContent: 'Mulai' });
-    btn.addEventListener('click', () => api.start(def));
+    btn.addEventListener('click', () => {
+      // ketukan ganda/berulang pada studi yang baru dimulai tidak mengulang simulasi
+      if (activeId === def.id && performance.now() - startedAt < 2500) return;
+      api.start(def);
+    });
+    btns[def.id] = btn;
     list.append(
       el('div', { className: 'study' }, [el('div', {}, [el('b', { textContent: def.title }), el('span', { textContent: def.desc })]), btn]),
     );
@@ -198,9 +214,24 @@ export function buildStudies(root, api) {
   card.append(list);
   root.append(card);
 
+  const setButtons = () => {
+    for (const [id, b] of Object.entries(btns)) {
+      const on = id === activeId;
+      b.classList.toggle('running', on);
+      b.textContent = !on ? 'Mulai' : performance.now() - startedAt < 2500 ? 'Berjalan ✓' : 'Ulangi';
+    }
+  };
+
   const banner = document.getElementById('studyBanner');
   return {
     show(def) {
+      activeId = def.id;
+      startedAt = performance.now();
+      setButtons();
+      clearTimeout(relabel);
+      relabel = setTimeout(setButtons, 2600);
+      runTitle.textContent = def.title;
+      running.hidden = false;
       const end = el('button', { className: 'study-end', textContent: 'Akhiri studi' });
       end.addEventListener('click', () => api.end());
       banner.replaceChildren(
@@ -210,6 +241,10 @@ export function buildStudies(root, api) {
       banner.hidden = false;
     },
     hide() {
+      activeId = null;
+      clearTimeout(relabel);
+      setButtons();
+      running.hidden = true;
       banner.hidden = true;
       banner.replaceChildren();
     },

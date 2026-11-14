@@ -544,10 +544,21 @@ export function createFlowViz(renderer, scene, app, flow, container) {
     [lastReal, lastSim] = save;
   }
 
+  /** Isi render target hilang bersama context WebGL: mulai ulang partikel dan jejak. */
+  function reset() {
+    for (const p of planes) {
+      p.pRead = p.initTex;
+      p.initTex.needsUpdate = true;
+      p.velTex.needsUpdate = true;
+      p.needsClear = true;
+    }
+  }
+
   return {
     update,
     runPasses,
     setQuality,
+    reset,
     planes,
     debugAdvance,
     /** rentang skala warna yang sedang dipakai (satuan besaran) */

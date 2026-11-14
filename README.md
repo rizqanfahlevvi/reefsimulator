@@ -149,6 +149,13 @@ Ketahanan: error di dalam langkah CFD ditangkap worker dan klien pulih otomatis 
 dengan pemberitahuan), worker yang tidak menjawab 10 detik dimulai ulang, medan NaN dinolkan dan diulang, error di loop
 render tidak lagi menghentikan animasi, dan modul build lama yang hilang setelah deploy baru memicu muat ulang sekali.
 
+**Context WebGL hilang** (GPU HP kewalahan, biasanya karena kabut 3D): setelah pulih, peta pantulan (PMREM), bayangan
+statis, partikel garis arus, dan tekstur kabut dibuat ulang (isi render target ikut hilang). Beban diturunkan bertahap:
+1× → kualitas minimal Sedang + langkah kabut lebih kasar, 2× → Hemat (tanpa bayangan), 3× → kabut 3D dimatikan
+sementara; tiap langkah diberi tahu dan tercatat (kualitas, resolusi, kabut, studi saat kejadian). Tingkatnya disimpan
+lokal di perangkat dan turun satu tingkat per hari tanpa kejadian baru ("Kembalikan ke bawaan" menghapusnya). Di layar
+sentuh beresolusi tinggi, langkah sinar kabut sejak awal satu tingkat lebih kasar.
+
 ## Pengaturan tersimpan
 
 Semua pengaturan (parameter tank, tampilan, peta arus, kualitas grafis, tabel listrik) disimpan otomatis di
