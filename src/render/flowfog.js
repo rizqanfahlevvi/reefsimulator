@@ -191,7 +191,7 @@ function createFogVolume(scene, app, flow, camera, spec) {
   /** @param {{min: number, max: number}} range rentang skala warna (sama dengan bidang & legenda) */
   function update(range) {
     const { V, FV, S } = app;
-    const on = V.cfd && V.fog;
+    const on = V.cfd && V.fog && app.mode !== 'plumb';
     mesh.visible = on;
     if (!on) return;
     spec.box(S, boxMin, boxMax);

@@ -1061,3 +1061,198 @@ section[role='tabpanel'] > .card:first-child details:first-of-type {
   border-color: var(--ok);
   color: #fff;
 }
+
+/* ---------- mode rakit pipa ---------- */
+body.plumb-mode #panel > :not(#plumbPanel),
+body.plumb-mode #charts {
+  display: none;
+}
+#plumbPanel[hidden] {
+  display: none;
+}
+#vbtn .plumbbtn {
+  background: #1b7f5a;
+  color: #fff;
+  border-color: #1b7f5a;
+}
+#vbtn .plumbbtn.active {
+  background: #fff;
+  color: #1b7f5a;
+}
+.pl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.pl-head b {
+  font-size: 15px;
+}
+.pl-back {
+  font-size: 12px;
+}
+.pl-file {
+  margin-top: 6px;
+}
+.pl-name {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--bd);
+  background: var(--card);
+  color: inherit;
+}
+.pl-ref {
+  margin: 0;
+}
+.pl-title {
+  margin: 0 0 2px;
+  font-size: 14px;
+}
+.pl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--mut);
+  margin-top: 6px;
+}
+.pl-field select,
+.pl-field input {
+  width: 100%;
+  color: var(--ink);
+}
+.pl-num {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--bd);
+  background: var(--card);
+  color: inherit;
+}
+.pl-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 8px;
+}
+.pl-grid3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0 8px;
+}
+.pl-cat h4 {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  color: var(--mut);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.pl-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.pl-item {
+  font-size: 12px;
+  padding: 6px 9px;
+}
+.pl-primary {
+  background: #1b7f5a;
+  border-color: #1b7f5a;
+  color: #fff;
+}
+.pl-danger {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+.pl-sizes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(27, 127, 90, 0.1);
+  font-size: 12px;
+}
+.pl-sizes[hidden] {
+  display: none;
+}
+.pl-chip {
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 999px;
+}
+.pl-rot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.pl-table {
+  margin-top: 6px;
+  font-size: 12px;
+}
+.pl-warn {
+  color: #b87800;
+}
+#plumbLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+#plumbLayer[hidden] {
+  display: none;
+}
+/* ujung terbuka: lingkaran hijau "+", drat = garis putus-putus, terpilih = kuning lebih besar */
+.pport {
+  position: absolute;
+  left: -15px;
+  top: -15px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.pport[hidden] {
+  display: none;
+}
+.pport::before {
+  content: '+';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(27, 127, 90, 0.92);
+  border: 2px solid #fff;
+  color: #fff;
+  font: 700 14px/18px system-ui, sans-serif;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+.pport[data-end='F']::before,
+.pport[data-end='M']::before {
+  border-style: dashed;
+}
+.pport.sel::before {
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+  background: #e0a400;
+  border-color: #fff;
+}

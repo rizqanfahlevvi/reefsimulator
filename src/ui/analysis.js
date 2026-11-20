@@ -191,6 +191,7 @@ export function buildAnalysis(root, ctx) {
       energy: energyStats(app, EL),
       version: VERSION,
       date: new Date(),
+      plumbing: ctx.getPlumbing?.(),
     });
   async function copyText(text, what) {
     try {

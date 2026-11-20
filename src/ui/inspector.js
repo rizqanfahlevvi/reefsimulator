@@ -289,7 +289,7 @@ export function buildInspector({ world, flow }) {
     if (!d) return;
     const tap = !multi && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 7 && performance.now() - d.t < 450;
     if (down.size === 0) multi = false;
-    if (!tap || e.type === 'pointercancel') return;
+    if (!tap || e.type === 'pointercancel' || app.mode === 'plumb') return;
     const r = canvas.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
@@ -353,6 +353,14 @@ export function buildInspector({ world, flow }) {
     },
     frame(dt) {
       t += dt;
+      if (app.mode === 'plumb') {
+        // mode rakit pipa: penanda & sorotan komponen simulasi disembunyikan
+        for (const k of HOT_KEYS) if (markers[k].shown !== false) {
+          markers[k].shown = false;
+          markers[k].el.hidden = true;
+        }
+        return;
+      }
       world.hot.set(current ? hotBoxes(app)[current] : null);
       world.hot.tick(t);
       aim.frame();

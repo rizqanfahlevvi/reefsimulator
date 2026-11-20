@@ -124,7 +124,7 @@ export function pickHot(app, ray) {
  * Sorotan komponen terpilih: kotak membulat transparan yang "bernapas" pelan.
  * Geometri dibangun ulang hanya bila ukuran/posisi area sentuh berubah (mis. slider digeser).
  */
-export function createHotHighlight(scene) {
+export function createHotHighlight(scene, extraLayer = 0) {
   const g = new THREE.Group();
   g.renderOrder = 11;
   scene.add(g);
@@ -153,6 +153,7 @@ export function createHotHighlight(scene) {
           const mesh = new THREE.Mesh(geo, m);
           mesh.position.set((b[0] + b[1]) / 2, (b[2] + b[3]) / 2, (b[4] + b[5]) / 2);
           mesh.renderOrder = 11;
+          if (extraLayer) mesh.layers.enable(extraLayer);
           if (m === rim) mesh.scale.setScalar(1.02);
           g.add(mesh);
         }

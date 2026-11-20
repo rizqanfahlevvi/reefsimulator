@@ -15,6 +15,7 @@ import { buildDiagnostics } from './ui/diagnostics.js';
 import { buildAnalysis } from './ui/analysis.js';
 import { buildClock } from './ui/clock.js';
 import { buildInspector } from './ui/inspector.js';
+import { plumbingSummary } from './ui/plumbpanel.js';
 import { toast } from './ui/toast.js';
 import { diag, logEvent, errorText, installGlobalHandlers } from './diag.js';
 import { $ } from './util/format.js';
@@ -190,6 +191,42 @@ const clock = buildClock({
 /* ketuk komponen di tampilan 3D → sorotan + kartu pengaturan */
 const inspector = world ? buildInspector({ world, flow }) : null;
 
+/* ================= mode rakit pipa (dimuat saat pertama dibuka) ================= */
+let plumb = null;
+async function enterPlumb() {
+  if (!world) return toast('Mode rakit pipa butuh tampilan 3D');
+  if (!plumb) {
+    const [{ createPlumbEditor }, { buildPlumbPanel }] = await Promise.all([import('./plumb/editor.js'), import('./ui/plumbpanel.js')]);
+    let panel = null;
+    const editor = createPlumbEditor({ world, onPickPart: (id) => panel?.pickPart(id), onPickPort: (pid, port) => panel?.pickPort(pid, port) });
+    panel = buildPlumbPanel($('plumbPanel'), { editor, onExit: exitPlumb });
+    plumb = { editor, panel };
+  }
+  app.mode = 'plumb';
+  inspector?.close();
+  document.body.classList.add('plumb-mode');
+  $('plumbPanel').hidden = false;
+  plumb.editor.show(true);
+  plumb.editor.setReference(plumb.panel.refVisible);
+  world.applyView();
+  $('bPlumb').textContent = 'Simulasi';
+  $('bPlumb').classList.add('active');
+  if (plumb.panel.design.parts.length) plumb.editor.focus();
+  logEvent('info', 'Masuk mode rakit pipa (simulasi arus dijeda)');
+}
+function exitPlumb() {
+  if (app.mode !== 'plumb') return;
+  app.mode = 'sim';
+  document.body.classList.remove('plumb-mode');
+  $('plumbPanel').hidden = true;
+  plumb?.editor.show(false);
+  world?.applyView();
+  $('bPlumb').textContent = 'Rakit pipa';
+  $('bPlumb').classList.remove('active');
+  logEvent('info', 'Keluar mode rakit pipa');
+}
+$('bPlumb')?.addEventListener('click', () => (app.mode === 'plumb' ? exitPlumb() : enterPlumb()));
+
 /* tab Analisis: saran otomatis, titik seimbang, uji pulsa, laporan untuk Claude */
 const analysisUI = buildAnalysis(ui.sections.analisis, {
   flow,
@@ -201,6 +238,7 @@ const analysisUI = buildAnalysis(ui.sections.analisis, {
   },
   notify: hooks.notify,
   setBadge: (n, level) => ui.setTabBadge('analisis', n, level),
+  getPlumbing: () => plumbingSummary(),
   showDye: () => ui.showQuantity('dye'),
 });
 
@@ -382,7 +420,7 @@ function frame(now) {
   // yang berjalan < 20 fps simulasi diam-diam lebih lambat dari kecepatan yang dipilih)
   const simdt = guarded('Simulasi', () => advance(Math.min(0.25, raw), ui.syncUI));
   clock.frame();
-  guarded('CFD', () => flow.tick(real, simdt));
+  if (app.mode !== 'plumb') guarded('CFD', () => flow.tick(real, simdt)); // mode rakit: CFD dijeda
   if (world) {
     if (siphonDirty && now - siphonAt > 90) {
       siphonAt = now;
@@ -393,6 +431,7 @@ function frame(now) {
       world.update(real, simdt);
       world.render();
       inspector?.frame(real);
+      plumb?.editor.frame(now / 1000);
     });
   }
   // timer UI memakai waktu nyata (bukan dt yang dibatasi) supaya tetap responsif di perangkat lambat
@@ -459,6 +498,9 @@ window.__sim = {
   },
   get inspector() {
     return inspector;
+  },
+  get plumb() {
+    return plumb;
   },
   /** majukan animasi garis arus n langkah (diagnostik) */
   flowAdvance: (n, dt) => world?.fviz.debugAdvance(n, dt),

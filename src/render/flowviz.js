@@ -472,7 +472,7 @@ export function createFlowViz(renderer, scene, app, flow, container) {
     lastReal = real;
     lastSim = simdt;
     simSinceRefresh += simdt;
-    const on = V.cfd;
+    const on = V.cfd && app.mode !== 'plumb'; // mode rakit pipa: visual arus disembunyikan
     tankH.mesh.visible = on && V.planeOn && FV.orient === 'h';
     tankV.mesh.visible = on && V.planeOn && FV.orient === 'v';
     filter.mesh.visible = on && V.filterPlane;

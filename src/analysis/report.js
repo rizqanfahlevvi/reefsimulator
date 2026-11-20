@@ -229,6 +229,13 @@ export function buildReport(c) {
     ].join('\n'),
   );
 
+  /* desain rakit pipa (bila ada) */
+  if (c.plumbing) {
+    h(`## 13. Desain pipa: ${c.plumbing.name}`);
+    L.push(`Dirakit di mode "Rakit pipa" (${c.plumbing.parts} bagian). Dimensi seri Indonesia adalah perkiraan; sambungan ke model hidrolik menyusul (fase 3).`, '');
+    L.push(c.plumbing.markdown.replace(/^### .*\n\n/, ''));
+  }
+
   /* lampiran JSON */
   h('## Lampiran: data mentah (JSON)');
   const data = {

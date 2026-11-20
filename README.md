@@ -70,6 +70,7 @@ src/
   diag.js               log kejadian & error global untuk laporan diagnostik (lokal)
   render/hotspots.js    area sentuh komponen 3D, pemilihan dengan sinar, sorotan, panah pengarah
   analysis/             saran (advisor), profil biota, pustaka, titik seimbang, uji pulsa, laporan Markdown
+  plumb/                rakit pipa: katalog & dimensi, model rakitan, geometri fitting, editor 3D, daftar bahan
 tests/                  Vitest: regresi hidrolik vs versi 1, solver Poisson, engine CFD, ketahanan klien
 ```
 
@@ -112,6 +113,31 @@ Kontrol di tab **Arus** tidak pernah dikunci. Bila tampilannya sedang mati (kont
 itu langsung menyalakan tampilan yang dibutuhkan (mis. memilih besaran "Umur air" menyalakan kabut 3D, menggeser tinggi
 bidang potong menyalakan bidang potong tank) dan memberi tahu lewat pesan singkat di tampilan 3D. Saat jejak partikel 3D
 aktif, legenda warnanya tampil di pojok tampilan 3D (merah = arus < 1 cm/s, bukan error).
+
+## Rakit pipa (fase 1)
+
+Tombol **Rakit pipa** di tampilan 3D membuka mode perakitan desain perpipaan (`src/plumb/`, `src/ui/plumbpanel.js`).
+Simulasi arus dijeda dan panel berganti menjadi katalog.
+
+- **Katalog uPVC** (abu, putih, bening; tanpa logam karena berkarat & beracun di air laut): pipa, knee 90°/45°,
+  belokan 180°, knee reducer, knee drat dalam (faucet elbow), knee drat luar–dalam, tee, tee reducer, tee drat dalam,
+  cross, sok, sok reducer, bushing, sok drat dalam/luar (female/male adapter), nipple hex, union, bulkhead, dop polos,
+  dop drat, plug, ball valve, stop kran, flange, flange buta.
+- **Ukuran**: seri Indonesia ½"–2" kelas AW/D dan metrik 20/25/32 mm; drat BSP. Tiap ujung punya jenis (sok polos,
+  ujung polos, drat dalam, drat luar, flange) — hanya sambungan yang cocok ditawarkan (sok ↔ pipa, drat dalam ↔ luar,
+  ukuran sama; reducer/bushing untuk ganti ukuran).
+- **Merakit**: pilih titik awal (ada preset keluaran pompa / di atas bibir tank), lalu ketuk ujung hijau → pilih bagian
+  → menempel otomatis dan ujung lanjutan langsung terpilih. Ketuk bagian untuk mengubah panjang potong, memutar per
+  45°/90° di sumbu sambungan, mengganti ujung sambung (mis. tee lewat cabang), warna, menyisipkan sok/union/valve di
+  tengah pipa (panjang total tetap), atau menghapus. Urungkan/ulangi, tank acuan bisa disembunyikan (layer kamera).
+- **Daftar bahan**: jumlah fitting per ukuran & kelas, panjang potong tiap pipa (dikemas ke batang 3–6 m dengan FFD),
+  sambungan lem/drat (seal tape)/flange, ujung yang masih terbuka, ukuran rakitan. Bisa disalin dan ikut masuk laporan
+  Claude (bagian 13).
+- **Simpan**: otomatis di browser, simpan dengan nama, ekspor/impor `.json` (divalidasi; bagian rusak dibuang).
+- **Data dimensi**: terverifikasi — diameter luar metrik, panjang sok metrik ISO 727 (0,5·D + 6 mm), drat BSP ISO 7-1;
+  perkiraan (beda antar merek) — diameter luar & tebal seri Indonesia, kedalaman sok tipe JIS, panjang badan fitting.
+- Fase berikutnya: penempatan & cek tabrakan dengan kaca, alat ukur, templat (fase 2); rugi tekanan desain ikut ke model
+  hidrolik (fase 3).
 
 ## Analisis & laporan untuk Claude
 

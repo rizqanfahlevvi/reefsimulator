@@ -34,7 +34,7 @@ export function createAim({ world, getCurrent, onChange }) {
   $('view').append(label);
   let drag = null;
 
-  const usable = (key) => key && AIM[key] && !(key === 'wm' && !app.V.wm);
+  const usable = (key) => key && AIM[key] && !(key === 'wm' && !app.V.wm) && app.mode !== 'plumb';
 
   function toRay(e) {
     const r = canvas.getBoundingClientRect();

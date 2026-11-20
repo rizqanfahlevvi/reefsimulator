@@ -159,7 +159,7 @@ export function createWorld(container, app, flow) {
     rockG.visible = V.rock;
     sandG.visible = V.sand;
     room.roomG.visible = V.room;
-    tracers.trG.visible = V.cfd && V.tr3d;
+    tracers.trG.visible = V.cfd && V.tr3d && app.mode !== 'plumb';
     eq.wmG.visible = V.wm;
     eq.wmMount.visible = V.wm;
     ctx.markShadowsDirty();
@@ -316,10 +316,11 @@ export function createWorld(container, app, flow) {
     }
     for (const p of fp.flowList) p.p.visible = V.flow;
     movePoints(fp.ret, fp.retPath, S.vr * 0.35, simdt, 0.3, 0.3, 0.3, Math.abs(S.vr) < 1);
-    if (V.cfd && V.tr3d && simdt > 0) tracers.update(Math.max(0.01, Math.min(0.06, simdt)), flow, S.HT);
+    const plumb = app.mode === 'plumb';
+    if (V.cfd && V.tr3d && simdt > 0 && !plumb) tracers.update(Math.max(0.01, Math.min(0.06, simdt)), flow, S.HT);
     fviz.update(real, simdt, { on: V.cfd && V.fog, stats: fog.stats, mode: app.FV.fogMode });
     fvLegendEl ??= document.getElementById('fvLegend');
-    const showTr = V.cfd && V.tr3d && (!fvLegendEl || fvLegendEl.hidden);
+    const showTr = V.cfd && V.tr3d && !plumb && (!fvLegendEl || fvLegendEl.hidden);
     if (trLegend.hidden === showTr) trLegend.hidden = !showTr;
     fog.update(fviz.range);
 
@@ -398,6 +399,11 @@ export function createWorld(container, app, flow) {
     hot,
     aim,
     onContextRestored,
+    /** Lapisan 1 = yang tetap tampil saat "tank acuan" disembunyikan di mode rakit pipa. */
+    enableRefLayer() {
+      room.roomG.traverse((o) => o.layers.enable(1));
+      for (const l of [hemi, sun, led]) l.layers.enable(1);
+    },
     /** Tambahan kekasaran langkah kabut (0–3) setelah GPU kewalahan. */
     setFogStrain(n) {
       fogStrain = Math.max(0, Math.min(3, n));
