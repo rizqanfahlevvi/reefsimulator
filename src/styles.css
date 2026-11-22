@@ -1583,3 +1583,120 @@ body.clay #vbtn .plumbbtn.active {
 body.clay canvas.ch {
   border-radius: 14px;
 }
+
+/* ---------- siphon & surface skimmer: subjudul, kontrol terbungkus, kartu status ---------- */
+.ctl-sub {
+  margin: 14px 0 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mut);
+}
+.ctl-sub[hidden],
+.ctl[hidden],
+label.tg[hidden],
+.ctl-why[hidden] {
+  display: none;
+}
+.ctl-why {
+  border-top: none;
+  padding: 2px 0;
+}
+.ctl-why summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--acc);
+}
+.skim-card {
+  --skim-water: rgba(56, 152, 214, 0.22);
+  --skim-cupwater: rgba(42, 120, 214, 0.55);
+  --skim-wall: #9aa6b1;
+  --skim-surf: #2a78d6;
+  --skim-rim: #e0a400;
+  --skim-float: #f2f2ee;
+  --skim-label: var(--mut);
+  margin: 6px 0 4px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--bg);
+}
+.skim-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.skim-chip {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: #1b7f5a;
+}
+.skim-chip[data-level='info'] {
+  background: #2a78d6;
+}
+.skim-chip[data-level='warn'] {
+  background: #b87800;
+}
+.skim-chip[data-level='bad'] {
+  background: #c2392e;
+}
+.skim-body {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin-top: 8px;
+}
+.skim-pic {
+  width: 120px;
+  height: 120px;
+  border-radius: 10px;
+  background: linear-gradient(#f4f8fb, #e8f0f6);
+}
+.skim-rows {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 8px;
+  margin: 0;
+  font-size: 12px;
+}
+.skim-rows dd {
+  white-space: nowrap;
+}
+.skim-rows dt {
+  color: var(--mut);
+}
+.skim-rows dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.skim-tip {
+  margin: 8px 0 6px;
+}
+.skim-focus {
+  font-size: 12px;
+}
+@media (prefers-color-scheme: dark) {
+  .skim-pic {
+    background: linear-gradient(#1f2a35, #17202a);
+  }
+  .skim-card {
+    --skim-wall: #6c7884;
+    --skim-float: #c9ccd0;
+  }
+}
+body.clay .skim-card {
+  border-radius: 18px;
+  background: var(--c-well);
+  box-shadow: var(--c-pressed);
+}
+body.clay .skim-pic {
+  border-radius: 14px;
+}

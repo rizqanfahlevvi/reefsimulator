@@ -131,6 +131,7 @@ const hooks = {
   applyView: () => world?.applyView(),
   applyGlass: () => world?.applyGlass(),
   applyBg: () => world?.applyBg(),
+  focusSkimmer: () => world?.focusSkimmer(),
   applyStyle: () => {
     applyUIStyle(app.LOOK.style);
     world?.setStyle(app.LOOK.style);
@@ -461,6 +462,7 @@ function frame(now) {
     const uiDt = uiAcc;
     uiAcc = 0;
     guarded('Metrik', () => metrics.update());
+    guarded('Kartu skimmer', () => ui.tick?.());
     ui.setDyeStatus(flow.dyeStatus());
     diagUI.update();
     clock.update(uiDt);

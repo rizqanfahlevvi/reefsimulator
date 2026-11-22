@@ -1,6 +1,7 @@
 /** Panel kontrol: slider, toggle, pilihan pipa/skimmer/kualitas/tampilan, tombol cepat. */
 import { app, emit, waterLitres, salinity, resetState } from '../state.js';
 import { defaultParams, initialState } from '../physics/hydraulics.js';
+import { buildSkimCard } from './skimcard.js';
 import { fmt, $, el } from '../util/format.js';
 import { COLORMAPS, COLORMAP_LABELS } from '../render/colormaps.js';
 import { QUANTITY_OPTIONS } from '../render/quantity.js';
@@ -476,6 +477,25 @@ export function buildControls(h) {
     U.fsub.inp.disabled = p.box || p.sk !== 2;
     for (const k of ['bleed', 'cap', 'sv2']) U[k].inp.disabled = !split;
     U.vent2.chk.disabled = !split;
+    // tampilkan hanya kontrol yang berlaku untuk susunan & tipe skimmer saat ini
+    const hide = (w, on) => w && w.hidden !== on && (w.hidden = on);
+    hide(subIntake, p.box);
+    hide(W.s_zin, p.box);
+    hide(W.s_kb, p.box);
+    hide(subSkim, p.box);
+    hide(W.skt, p.box);
+    hide(W.s_zrim, p.box || p.sk !== 1);
+    hide(W.s_fsub, p.box || p.sk !== 2);
+    for (const k of ['s_bleed', 's_cap', 's_sv2', 't_vent2']) hide(W[k], !split);
+    hide(splitHint, !split);
+    hide(W.layout, p.box);
+    relabel(W.s_zin, split ? 'Tinggi intake pipa bawah dari dasar' : 'Tinggi intake bawah dari dasar');
+    relabel(W.s_kb, split ? 'Bukaan intake pipa bawah' : 'Bukaan intake bawah');
+    relabel(W.s_sv, split ? 'Ball valve pipa bawah' : 'Ball valve U-pipe');
+    relabel(W.s_zd, split ? 'Tinggi ujung buang (kedua pipa)' : 'Tinggi ujung buang siphon');
+    relabel(W.t_venturi, split ? 'Aqualifter / venturi di U pipa bawah' : 'Selang udara ke venturi / aqualifter');
+    relabel(W.t_vent2, 'Aqualifter / venturi di U skimmer');
+    skim.update();
     const b = $('bPow');
     b.textContent = p.on ? 'Listrik: nyala' : 'Listrik: mati';
     b.className = p.on ? 'on' : 'off';
@@ -561,11 +581,37 @@ export function buildControls(h) {
       'Arah duckbill dan wavemaker bisa diatur kapan saja. Pengaruhnya pada pola arus terlihat di tab Arus (bidang potong, kabut 3D, jejak) setelah ±30 detik simulasi; level dan debit hidrolik tidak berubah.',
   });
 
-  const splitNote = el('p', {
-    className: 'note',
-    textContent:
-      'Berlaku bila Susunan intake = 2 U-pipe terpisah. Pipa skimmer hanya diisi lewat bibir kepala skimmer; bila siphon menarik lebih banyak dari yang bisa masuk, kepala skimmer kering dan udara ikut tersedot ("kelaparan"). Lubang cadangan memasok kekurangan dari bawah, dop berlubang membatasi tarikan, aqualifter membuang udara di puncak U. Kecepatan di pipa harus melebihi ±0,35·√(g·D) supaya gelembung terbawa.',
-  });
+  /* ---------- siphon & surface skimmer: kartu status + kontrol per bagian (hanya yang relevan) ---------- */
+  const skim = buildSkimCard({ onFocus: () => h.focusSkimmer?.() });
+  const sub = (t) => el('h4', { className: 'ctl-sub', textContent: t });
+  /** Bungkus label + kontrol supaya bisa disembunyikan bila tidak berlaku. */
+  const wrap = (id) => {
+    const e = $(id);
+    if (!e) return null;
+    if (e.type === 'checkbox') return e.closest('label');
+    const w = el('div', { className: 'ctl' });
+    const lab = root.querySelector(`label[for="${id}"]`);
+    if (lab) w.append(lab);
+    w.append(e);
+    return w;
+  };
+  const W = {};
+  for (const id of ['layout', 'pipe', 'skt', 's_zd', 's_zin', 's_kb', 's_zrim', 's_fsub', 's_sv', 's_bleed', 's_cap', 's_sv2', 't_venturi', 't_vent2', 't_box']) W[id] = wrap(id);
+  const subIntake = sub('Intake bawah');
+  const subSkim = sub('Surface skimmer');
+  const splitHint = el('details', { className: 'ctl-why' }, [
+    el('summary', { textContent: 'Kenapa pipa skimmer terpisah bisa putus?' }),
+    el('p', {
+      className: 'note',
+      textContent:
+        'Pipa skimmer hanya dipasok lewat bibir kepala skimmer (dan lubang cadangan). Bila siphon menarik lebih banyak dari yang bisa masuk, kepala skimmer kering dan udara ikut tersedot ("kelaparan"). Lubang cadangan memasok kekurangan dari bawah, bibir yang lebih dalam menambah pasokan, dop berlubang membatasi tarikan, aqualifter membuang udara di puncak U. Kecepatan di pipa harus melebihi ±0,35·√(g·D) supaya gelembung terbawa.',
+    }),
+  ]);
+  /** Label kontrol bersama mengikuti susunan (1 pipa / pipa bawah). */
+  const relabel = (w, text) => {
+    const sp = w?.querySelector('span');
+    if (sp && sp.textContent !== text) sp.textContent = text;
+  };
 
   /* ================= tata letak: tab + grup ringkas ================= */
   const LAYOUT = [
@@ -575,8 +621,33 @@ export function buildControls(h) {
       groups: [
         ['Air', ['s_vol', 's_disp']],
         ['Pompa return & auto-off', ['s_spd', 's_qmax', 's_hmax', 's_rv', 't_fswHi', 't_fswLo']],
-        ['Siphon U-pipe', ['layout', 'pipe', 'skt', 's_zd', 's_zin', 's_kb', 's_zrim', 's_fsub', 's_sv', 't_venturi', 't_box']],
-        ['Pipa khusus skimmer (susunan terpisah)', [splitNote, 's_bleed', 's_cap', 's_sv2', 't_vent2']],
+        [
+          'Siphon & surface skimmer',
+          [
+            skim.el,
+            sub('Susunan'),
+            W.layout,
+            W.pipe,
+            W.t_box,
+            subIntake,
+            W.s_zin,
+            W.s_kb,
+            subSkim,
+            W.skt,
+            W.s_zrim,
+            W.s_fsub,
+            W.s_bleed,
+            W.s_cap,
+            splitHint,
+            sub('Ujung buang & valve'),
+            W.s_zd,
+            W.s_sv,
+            W.s_sv2,
+            sub('Buang udara di puncak U'),
+            W.t_venturi,
+            W.t_vent2,
+          ],
+        ],
         ['Filter & pengaman', ['s_clog', 't_hole', 't_ato']],
         ['Duckbill & wavemaker', ['s_nyaw', 's_npit', 't_wm', 's_wq', 's_wyaw', 's_wpit', 's_wy', nozzleNote]],
       ],
@@ -683,5 +754,5 @@ export function buildControls(h) {
     ensureAnyViz();
   }
 
-  return { syncUI, applyView, markSaved, U, showTab, reveal, currentTab, setDyeStatus, setTabBadge, showQuantity, sections, studiesRoot: sections.studi };
+  return { syncUI, applyView, markSaved, U, showTab, reveal, currentTab, setDyeStatus, setTabBadge, showQuantity, sections, studiesRoot: sections.studi, tick: skim.update };
 }

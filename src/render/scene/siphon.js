@@ -131,6 +131,27 @@ export function createSiphon(scene, M) {
         cb.build(cg);
         o.cupW = mesh(new THREE.CylinderGeometry(2.12, 2.12, 1, 24), M.core, sipG, { order: 4 });
         if (!skPipe) o.brW = mesh(new THREE.CylinderGeometry(ri, ri, 1, 10), M.core, sipG);
+        // tirai air yang jatuh dari bibir ke dalam kepala skimmer (terlihat saat air permukaan masuk)
+        o.sheet = mesh(new THREE.CylinderGeometry(2.05, 2.05, 1, 32, 1, true), M.sheet, sipG, { order: 4 });
+        o.sheet.visible = false;
+        // gelembung udara yang tersedot: naik di kaki tank menuju puncak U (penanda, selalu terlihat)
+        o.bubs = makePoints(16, 0xffffff, 0.8, sipG);
+        o.bubs.p.material.depthTest = false;
+        o.bubs.p.renderOrder = 13;
+        const zcb0 = rimI - GEO.CUPD;
+        o.bubPath = makePath(
+          skPipe
+            ? [
+                [x, zcb0, zi],
+                [x, yc - R, zi],
+              ]
+            : [
+                [x, zcb0, zb],
+                [x, zj, zb],
+                [x, zj, zi],
+                [x, yc - R, zi],
+              ],
+        );
       }
       const vent = skPipe ? P.vent2 : P.venturi;
 

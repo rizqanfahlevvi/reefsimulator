@@ -18,6 +18,8 @@ import { buildLabels } from './scene/labels.js';
 import { createFlowViz } from './flowviz.js';
 import { createFlowFog } from './flowfog.js';
 import { GEO } from '../physics/constants.js';
+import { isSplit, rimOf } from '../physics/hydraulics.js';
+import { siphonX, SIPHON } from '../layout.js';
 import { applySurfaceDetail, createGodRays, createAO, createClayStyler } from './realism.js';
 import * as THREE from 'three';
 
@@ -333,6 +335,21 @@ export function createWorld(container, app, flow) {
           o.brW.scale.y = hh;
           o.brW.position.set(o.x, o.zj + hh / 2, o.zb);
         }
+        // air permukaan jatuh dari bibir ke dalam kepala skimmer
+        if (o.sheet) {
+          const drop = rim - top;
+          const on = !br && S.qk[i] > 0.5 && drop > 0.12;
+          if (o.sheet.visible !== on) o.sheet.visible = on;
+          if (on) {
+            o.sheet.scale.y = drop;
+            o.sheet.position.set(o.x, top + drop / 2, o.zb);
+          }
+        }
+        // gelembung: udara tersedot (kepala kering/pusaran) atau menumpuk di puncak U
+        if (o.bubs) {
+          const suck = !br && (S.airIn[i] > 0 || S.air[i] > 0.15);
+          movePoints(o.bubs, o.bubPath, suck ? 8 + 25 * Math.min(1, S.airIn[i]) : 0, real, 0.3, 0.15, 0.3, !suck);
+        }
       }
       const free = P.zd > S.H1 + 0.15 && v > 1 && !br;
       o.stream.visible = free;
@@ -404,6 +421,28 @@ export function createWorld(container, app, flow) {
     for (let i = 0; i < labels.length; i++) labels[i].visible = V.label && (i < 4 || P.ato);
   }
 
+  /** Arahkan kamera ke kepala surface skimmer (dari sisi depan-kanan, sedikit di atas muka air). */
+  function focusSkimmer() {
+    const { S, P } = app;
+    let x;
+    let y;
+    let z;
+    if (P.box) {
+      x = 5;
+      y = S.HB;
+      z = 6;
+    } else {
+      const split = isSplit(P);
+      const i = split ? 1 : 0;
+      x = siphonX(P.n, i);
+      y = rimOf(S, P, i) - 1;
+      z = split ? SIPHON.zTank : SIPHON.zTank + 3.6;
+    }
+    controls.target.set(x, y, z);
+    camera.position.set(x + 13, y + 7, z + 24);
+    controls.update();
+  }
+
   /** Ganti gaya tampilan 3D tanpa memuat ulang (material asli disimpan & dipulihkan). */
   function setStyle(s) {
     s = s === 'clay' ? 'clay' : 'real';
@@ -470,6 +509,7 @@ export function createWorld(container, app, flow) {
       return { style, ao: ao.enabled, rays: raysOn && style === 'real' };
     },
     setStyle,
+    focusSkimmer,
     fviz,
     hot,
     aim,
