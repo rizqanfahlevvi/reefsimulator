@@ -256,4 +256,14 @@ sehingga data rusak/versi lama tidak membuat aplikasi error.
   tegak lurus, menghijau bila dilihat miring), pantulan ditambahkan utuh dari lingkungan pantulan khusus kaca
   (jendela berkisi; dipisah supaya pencahayaan benda lain tidak berubah), tepi atas dipoles membulat dan berpendar
   hijau, muka potong di sudut dan alas. Lihat `src/render/materials.js` dan `src/render/scene/tank.js`.
+- **Gaya 3D realistis** (`src/render/realism.js`, tekstur prosedural tanpa unduhan):
+  - batu hidup berpori (bump + lubang) berwarna krem hangat × koralin; pasir berbutir; riak halus berkilau di permukaan
+    air; air makin biru ke dasar dan sedikit lebih jernih; kaustik di dasar & batu 1,5× lebih kuat;
+  - berkas cahaya dari lampu LED ke dalam air (warna mengikuti lampu, lebih jelas di mode gelap);
+  - bayangan halus (ambient occlusion, GTAO three.js, resolusi setengah) ditumpangkan di atas render biasa — bukan lewat
+    EffectComposer, karena komposer mencampur air & kaca transparan di ruang warna linear sehingga tampak pucat. Label,
+    partikel arus, bidang/kabut arus, sorotan, dan panah digambar sesudah AO supaya tidak ikut gelap;
+  - beban bertingkat: AO hanya di kualitas **Tinggi** (di HP layar padat hanya bila Tinggi dipilih sendiri, bukan
+    Otomatis), berkas cahaya mati di **Hemat**; turun otomatis bila FPS rendah atau context WebGL pernah hilang.
+    Status AO & berkas cahaya tercantum di laporan diagnostik.
 - Angka adalah acuan untuk dikalibrasi saat uji air tawar, bukan pengganti uji itu.

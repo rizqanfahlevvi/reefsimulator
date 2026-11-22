@@ -64,7 +64,7 @@ export function buildDiagnostics(ctx) {
       `Perangkat: ${navigator.userAgent}`,
       `Layar: ${innerWidth}×${innerHeight} @${fmt(devicePixelRatio || 1, 2)}x · tab terbuka: ${ctx.getTab()}`,
       `GPU: ${gpuName(w)} · context hilang ${diag.gpu.lost}× sesi ini · mode ringan tingkat ${diag.gpu.strain}${w ? ' · langkah kabut ' + w.fogStep : ''}`,
-      `Grafis: ${w ? QUALITY[w.quality] : '-'} (${app.quality === 'a' ? 'otomatis' : 'manual'}) · FPS ${fmt(diag.fps, 0)}`,
+      `Grafis: ${w ? QUALITY[w.quality] : '-'} (${app.quality === 'a' ? 'otomatis' : 'manual'})${w?.effects ? ` · AO ${w.effects.ao ? 'nyala' : 'mati'} · berkas cahaya ${w.effects.rays ? 'nyala' : 'mati'}` : ''} · FPS ${fmt(diag.fps, 0)}`,
       `CFD: ${V.cfd ? 'nyala' : 'mati'} · ${flow.mode} · ${fmt(p.ms, 0)} ms/langkah · mengikuti ${fmt(p.ratio * 100, 0)}% waktu simulasi · ` +
         `waktu CFD ${fmt(flow.cfdTime, 0)} dtk · diulang ${p.resets}× · error ${p.errors} · worker dimulai ulang ${p.restarts}×`,
       `Simulasi: t ${fmt(S.t, 0)} dtk · ${app.SPD}× · ${app.paused ? 'DIJEDA' : 'berjalan'} · listrik ${P.on ? 'nyala' : 'mati'}`,

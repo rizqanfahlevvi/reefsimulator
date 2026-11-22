@@ -129,7 +129,7 @@ const hooks = {
   applyView: () => world?.applyView(),
   applyGlass: () => world?.applyGlass(),
   applyBg: () => world?.applyBg(),
-  setQuality: (l) => world?.setQuality(l),
+  setQuality: (l) => world?.setQuality(l, true), // dipilih pengguna (AO boleh aktif di HP)
   setAutoQuality: (v) => (autoQuality = v),
   resetFlow: () => (flow.resetNext = true),
   updElec: () => elec.update(),
@@ -279,7 +279,7 @@ if (world) {
     logEvent('info', 'WebGL context pulih · ' + msg);
     toast(msg, 5000);
   });
-  if (!autoQuality) world.setQuality(+app.quality);
+  if (!autoQuality) world.setQuality(+app.quality, true);
   if (gpuStrain > 0) logEvent('info', 'Mode ringan GPU tingkat ' + gpuStrain + ' (context WebGL pernah hilang di perangkat ini) · ' + applyStrain(false));
   world.rebuildSiphon();
   window.addEventListener('resize', world.resize);

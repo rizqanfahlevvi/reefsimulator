@@ -137,6 +137,7 @@ function createFogVolume(scene, app, flow, camera, spec) {
   mesh.renderOrder = 10; // setelah kaca dan bidang potong
   mesh.visible = false;
   mesh.frustumCulled = false;
+  mesh.userData.overlay = true; // digambar sesudah AO
   scene.add(mesh);
 
   const boxMin = new THREE.Vector3();

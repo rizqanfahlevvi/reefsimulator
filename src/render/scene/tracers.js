@@ -11,6 +11,7 @@ const NA = NT + NF;
 
 export function buildTracers(scene) {
   const trG = new THREE.Group();
+  trG.userData.overlay = true; // digambar sesudah AO
   scene.add(trG);
   const P = new Float32Array(NA * 3);
   const C = new Float32Array(NA * 3);

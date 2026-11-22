@@ -206,6 +206,7 @@ export function createPlumbEditor({ world, onPickPart, onPickPort, onPickPoint }
   let measuring = false;
   const mg = new THREE.Group();
   mg.visible = false;
+  mg.userData.overlay = true; // digambar sesudah AO
   scene.add(mg);
   const onTop = (o) => {
     o.renderOrder = 30;

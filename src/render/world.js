@@ -18,6 +18,7 @@ import { buildLabels } from './scene/labels.js';
 import { createFlowViz } from './flowviz.js';
 import { createFlowFog } from './flowfog.js';
 import { GEO } from '../physics/constants.js';
+import { applySurfaceDetail, createGodRays, createAO } from './realism.js';
 
 const LAMP = {
   off: [0, 0, 0],
@@ -64,6 +65,15 @@ export function createWorld(container, app, flow) {
   const fog = createFlowFog(scene, app, flow, camera);
   renderer.info.autoReset = false; // hitung draw call render utama + pass visualisasi per frame
 
+  /* gaya realistis: detail permukaan (sebelum attachEnv supaya intensitas pantulan baru tercatat),
+     berkas cahaya, dan AO bertingkat (lihat setQuality) */
+  const rippleTick = applySurfaceDetail(M, scene, water.surfMat);
+  const rays = createGodRays(scene, uniforms.uT);
+  const ao = createAO(renderer, scene, camera);
+  let raysOn = true;
+  /** Penguat kaustik di dasar/batu untuk gaya realistis. */
+  const CAUSTIC_K = 1.5;
+
   /*
    * Env map dipasang langsung ke material (bukan scene.environment) karena three r163+
    * mengabaikan envMapIntensity per material bila memakai scene.environment.
@@ -99,6 +109,7 @@ export function createWorld(container, app, flow) {
   function resize() {
     ctx.resize();
     tracers.setPointScale(renderer.domElement.height);
+    ao.resize();
   }
 
   /**
@@ -108,9 +119,17 @@ export function createWorld(container, app, flow) {
   const touchHiDpi = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches && DPR >= 2;
   let fogStrain = 0;
   const fogLevel = (l) => Math.min(3, l + (touchHiDpi ? 1 : 0) + fogStrain);
+  // AO hanya di kualitas Tinggi; di HP layar padat hanya bila Tinggi dipilih sendiri (bukan Otomatis)
+  ao.setEnabled(!touchHiDpi);
 
-  function setQuality(l) {
+  /**
+   * @param {number} l 0 Tinggi · 1 Tinggi (turun otomatis) · 2 Sedang · 3 Hemat
+   * @param {boolean} [manual] dipilih pengguna (bukan penyesuaian otomatis)
+   */
+  function setQuality(l, manual = false) {
     qLevel = l;
+    ao.setEnabled(l === 0 && (manual || !touchHiDpi));
+    raysOn = l <= 2;
     renderer.setPixelRatio(Math.min(DPR, [2, 1.5, 1, 1][l]));
     const lite = l >= 3;
     if (sun.castShadow === lite) {
@@ -141,6 +160,7 @@ export function createWorld(container, app, flow) {
     ctx.markShadowsDirty();
     fviz.reset();
     fog.invalidate();
+    ao.invalidate();
   }
 
   function rebuildSiphon() {
@@ -180,6 +200,7 @@ export function createWorld(container, app, flow) {
     tt += real;
     uniforms.uT.value = tt;
     uniforms.uLv.value = S.HT;
+    rippleTick(tt);
 
     eq.nozG.rotation.y = NZL.yaw * D2R;
     eq.nozG.rotation.z = -NZL.pitch * D2R;
@@ -208,7 +229,8 @@ export function createWorld(container, app, flow) {
       for (const m of corals.coralMats) m.emissiveIntensity = fl;
       const e = on ? 0.35 + 0.9 * k : 0.06;
       M.led.color.setRGB(L[0] * e * 1.6, L[1] * e * 1.6, L[2] * e * 1.6);
-      uniforms.uOn.value = on ? Math.min(1.4, k) : 0;
+      uniforms.uOn.value = on ? Math.min(1.4, k) * CAUSTIC_K : 0;
+      rays.update(S.HT, raysOn && on ? k * (LOOK.dark ? 1.6 : 1) : 0, L, camera);
       const tw = on && LOOK.lamp === 'blue' ? 0.55 : on && LOOK.lamp === 'mix' ? 0.25 : 0;
       M.water.color.setRGB(0.024, 0.34 - 0.12 * tw, 0.75 + 0.15 * tw);
     }
@@ -373,10 +395,29 @@ export function createWorld(container, app, flow) {
     for (let i = 0; i < labels.length; i++) labels[i].visible = V.label && (i < 4 || P.ato);
   }
 
+  const overlay = (o) => o.userData.overlay || o.isSprite || o.isPoints;
+  const vis = [];
   function render() {
     renderer.info.reset();
     controls.update();
-    renderer.render(scene, camera);
+    if (ao.enabled) {
+      // 1) scene tanpa penanda → 2) AO dikalikan → 3) penanda (label, partikel, bidang arus, kabut,
+      //    sorotan, panah) di atasnya, tetap diuji kedalaman terhadap scene
+      const kids = scene.children;
+      vis.length = kids.length;
+      for (let i = 0; i < kids.length; i++) {
+        vis[i] = kids[i].visible;
+        if (overlay(kids[i])) kids[i].visible = false;
+      }
+      renderer.render(scene, camera);
+      ao.apply();
+      for (let i = 0; i < kids.length; i++) kids[i].visible = overlay(kids[i]) || kids[i].isLight ? vis[i] : false;
+      const ac = renderer.autoClear;
+      renderer.autoClear = false;
+      renderer.render(scene, camera);
+      renderer.autoClear = ac;
+      for (let i = 0; i < kids.length; i++) kids[i].visible = vis[i];
+    } else renderer.render(scene, camera);
     // pass GPU garis arus dijalankan sesudah render utama (hasilnya tampil di frame berikutnya)
     fviz.runPasses();
   }
@@ -394,6 +435,10 @@ export function createWorld(container, app, flow) {
     setQuality,
     get quality() {
       return qLevel;
+    },
+    /** Efek gaya realistis yang sedang aktif (untuk diagnostik). */
+    get effects() {
+      return { ao: ao.enabled, rays: raysOn };
     },
     fviz,
     hot,

@@ -449,7 +449,10 @@ export function createFlowViz(renderer, scene, app, flow, container) {
     },
   });
   const planes = [tankH, tankV, filter];
-  for (const p of planes) scene.add(p.mesh);
+  for (const p of planes) {
+    p.mesh.userData.overlay = true; // digambar sesudah AO
+    scene.add(p.mesh);
+  }
 
   const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));

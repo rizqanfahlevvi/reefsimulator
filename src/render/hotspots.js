@@ -127,6 +127,7 @@ export function pickHot(app, ray) {
 export function createHotHighlight(scene, extraLayer = 0) {
   const g = new THREE.Group();
   g.renderOrder = 11;
+  g.userData.overlay = true; // digambar sesudah AO (lihat render/realism.js)
   scene.add(g);
   const mat = new THREE.MeshBasicMaterial({ color: 0x2e9bff, transparent: true, opacity: 0.22, depthWrite: false });
   const rim = new THREE.MeshBasicMaterial({ color: 0x7cc6ff, transparent: true, opacity: 0.4, depthWrite: false, side: THREE.BackSide });
@@ -241,6 +242,7 @@ export function createAimHandle(scene) {
   const g = new THREE.Group();
   g.visible = false;
   g.renderOrder = 12;
+  g.userData.overlay = true;
   scene.add(g);
   // toneMapped: false → warna sama dengan penanda HTML (tidak dipucatkan tone mapping ACES)
   const blue = new THREE.MeshBasicMaterial({ color: 0x2a78d6, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false, toneMapped: false });

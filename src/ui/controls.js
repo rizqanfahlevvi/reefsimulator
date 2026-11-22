@@ -157,7 +157,7 @@ export function buildControls(h) {
   });
   selectRow(gs[6], 'Kualitas grafis', 'qual', [
     ['a', 'Otomatis (menyesuaikan perangkat)'],
-    ['0', 'Tinggi'],
+    ['0', 'Tinggi (+ bayangan halus/AO)'],
     ['2', 'Sedang'],
     ['3', 'Hemat'],
   ], (val) => {
