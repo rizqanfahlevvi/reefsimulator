@@ -40,7 +40,39 @@ export function defaultParams() {
     cap: 0, // dop berlubang di ujung buang pipa skimmer, Ø mm (0 = tanpa dop)
     vent2: false, // aqualifter/venturi di puncak U skimmer
     sv2: 1, // ball valve U skimmer (1 = terbuka penuh / tanpa valve)
+    // skimmer tipe 3 (kepala apung teleskopik: batang meluncur di tabung bening)
+    tmid: 26, // tinggi bibir di tengah ruang luncur (cm)
+    tstroke: 4, // panjang ruang luncur (cm)
   };
+}
+
+/** Skimmer yang bibirnya ikut muka air (tipe 2 kepala apung, tipe 3 kepala apung teleskopik). */
+export const isFloating = (P) => P.sk === 2 || P.sk === 3;
+
+/** Bibir skimmer tipe 3 yang belum dibatasi ruang luncur, dan batas ruang luncurnya (cm). */
+export function teleRange(P) {
+  const half = (P.tstroke ?? 4) / 2;
+  const mid = P.tmid ?? 26;
+  return { lo: mid - half, hi: mid + half };
+}
+
+/**
+ * Geometri kepala apung teleskopik (cm): batang di bawah corong meluncur di tabung bening yang
+ * dipasang di atas riser; untuk pipa skimmer terpisah, riser tersambung lewat belokan J.
+ * Ukuran dipilih supaya pada ruang luncur penuh batang tidak mentok ke dasar tabung dan masih
+ * masuk ≥ 3 cm saat kepala di posisi tertinggi.
+ */
+export function teleGeom(P, minBottom = 4) {
+  const { lo, hi } = teleRange(P);
+  const neck = 4.35; // bibir → pangkal batang (mangkuk 2,85 + corong 1,5)
+  const tubeTop = lo - neck - 0.8;
+  let stem = hi - lo + 4;
+  let tubeBot = lo - neck - stem - 0.3;
+  if (tubeBot < minBottom) {
+    tubeBot = minBottom;
+    stem = Math.max(3.5, lo - neck - 0.3 - tubeBot);
+  }
+  return { neck, stem, tubeTop, tubeBot, yJ: Math.max(3.2, tubeBot - 2.4), dz: 4 };
 }
 
 /** Konstanta susunan 2 pipa terpisah. */
@@ -210,9 +242,23 @@ const signedSqrt = (x) => (x >= 0 ? Math.sqrt(x) : -Math.sqrt(-x));
 /** Tinggi bibir mangkuk surface skimmer saat ini. */
 export function rimOf(S, P, i = 0) {
   const cups = (P.fsub ?? 4) / 10; // bawaan 4 mm = GEO.CUPS
-  if (isSplit(P) && i === 1) return P.sk === 1 ? P.zrim : Math.max(12, Math.min(29.5, S.HT - cups));
+  // tipe 3: kepala mengikuti muka air hanya di dalam ruang luncur; di luar itu mentok
+  const tele = () => {
+    const { lo, hi } = teleRange(P);
+    return Math.min(hi, Math.max(lo, S.HT - cups));
+  };
+  if (isSplit(P) && i === 1) return P.sk === 1 ? P.zrim : P.sk === 3 ? tele() : Math.max(12, Math.min(29.5, S.HT - cups));
   const zjt = P.zin + GEO.ZJ + P.D * 0.5;
+  if (P.sk === 3) return Math.max(zjt + GEO.CUPD + 1, tele());
   return P.sk === 2 ? Math.max(zjt + GEO.CUPD + 1, Math.min(29.5, S.HT - cups)) : P.zrim;
+}
+
+/** Keadaan ruang luncur skimmer tipe 3: 'free' | 'top' (mentok atas) | 'bottom' (mentok bawah). */
+export function teleState(S, P) {
+  if (P.sk !== 3) return null;
+  const { lo, hi } = teleRange(P);
+  const want = S.HT - (P.fsub ?? 4) / 10;
+  return want > hi + 1e-6 ? 'top' : want < lo - 1e-6 ? 'bottom' : 'free';
 }
 
 /** Apakah cabang surface skimmer aktif (secara geometris mungkin). */
@@ -333,7 +379,9 @@ function skimmerPipe(S, P, dt, run, As, D, vT, outSub) {
   const weirQ = (Hc) => weir(HT, Hc, rim, GEO.CUPB);
   const bleedQ = (Hc) => (ab ? SPLIT.cd * ab * C2 * signedSqrt(HT - Hc) : 0);
   const supply = (Hc) => weirQ(Hc) + bleedQ(Hc);
-  const Lp = GEO.YC - zcb + 11 + (GEO.YC - P.zd);
+  // tipe 3: lewat batang & tabung turun ke belokan J lalu naik ke puncak U
+  const tg = P.sk === 3 ? teleGeom(P) : null;
+  const Lp = tg ? GEO.YC - tg.yJ + tg.dz + (zcb - tg.yJ) + 11 + (GEO.YC - P.zd) : GEO.YC - zcb + 11 + (GEO.YC - P.zd);
   let v = S.vs[1];
   let air = S.air[1];
   let Hc = Math.min(HT, Math.max(zcb, S.Hc[1]));

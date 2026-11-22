@@ -18,7 +18,7 @@ import { buildLabels } from './scene/labels.js';
 import { createFlowViz } from './flowviz.js';
 import { createFlowFog } from './flowfog.js';
 import { GEO } from '../physics/constants.js';
-import { isSplit, rimOf } from '../physics/hydraulics.js';
+import { isSplit, rimOf, teleGeom } from '../physics/hydraulics.js';
 import { siphonX, SIPHON } from '../layout.js';
 import { applySurfaceDetail, createGodRays, createAO, createClayStyler } from './realism.js';
 import * as THREE from 'three';
@@ -436,7 +436,7 @@ export function createWorld(container, app, flow) {
       const i = split ? 1 : 0;
       x = siphonX(P.n, i);
       y = rimOf(S, P, i) - 1;
-      z = split ? SIPHON.zTank : SIPHON.zTank + 3.6;
+      z = split ? SIPHON.zTank + (P.sk === 3 ? teleGeom(P).dz : 0) : SIPHON.zTank + 3.6;
     }
     controls.target.set(x, y, z);
     camera.position.set(x + 13, y + 7, z + 24);

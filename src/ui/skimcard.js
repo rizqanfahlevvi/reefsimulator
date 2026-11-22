@@ -5,7 +5,7 @@
  */
 import { app } from '../state.js';
 import { G, GEO } from '../physics/constants.js';
-import { isSplit, rimOf, skimmerActive } from '../physics/hydraulics.js';
+import { isSplit, rimOf, skimmerActive, isFloating, teleState, teleRange } from '../physics/hydraulics.js';
 import { el, fmt } from '../util/format.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -46,6 +46,18 @@ export function skimmerState(a = app) {
   let level = 'ok';
   let title = 'Skimmer bekerja';
   let tip = '';
+  // tipe 3: kepala mentok di ujung ruang luncur tidak lagi ikut muka air
+  const tele = teleState(S, P);
+  if (tele) {
+    const { lo, hi } = teleRange(P);
+    rows.push(['Ruang luncur', tele === 'free' ? `bebas (${fmt(lo, 1)}–${fmt(hi, 1)} cm)` : tele === 'top' ? 'MENTOK ATAS' : 'MENTOK BAWAH']);
+  }
+  const teleTip =
+    tele === 'top'
+      ? ' Kepala mentok di atas ruang luncur sehingga bibir tidak ikut naik: naikkan "Tinggi bibir di tengah ruang luncur" atau perpanjang ruang luncur.'
+      : tele === 'bottom'
+        ? ' Kepala mentok di dasar ruang luncur (bibir terendam makin dalam): turunkan tengah ruang luncur atau perpanjang ruang luncur.'
+        : '';
   if (split) {
     const v = S.vs[1];
     const qsk = S.qk[1] + S.qb[1];
@@ -74,6 +86,13 @@ export function skimmerState(a = app) {
       title = 'Bibir hampir sejajar muka air';
       tip = 'Sedikit sekali air yang bisa masuk. Turunkan bibir (atau benamkan kepala apung) beberapa mm.';
     } else tip = 'Pasokan lewat bibir cukup untuk tarikan siphon dan gelembung tersapu.';
+    if (tele && tele !== 'free') {
+      if (level === 'ok') {
+        level = 'warn';
+        title = tele === 'top' ? 'Kepala skimmer mentok di atas' : 'Kepala skimmer mentok di bawah';
+      }
+      tip += teleTip;
+    }
   } else {
     const share = S.q.s > 1 ? Math.max(0, S.q.k) / S.q.s : 0;
     rows.push(
@@ -95,6 +114,13 @@ export function skimmerState(a = app) {
       title = 'Sedikit air lewat skimmer';
       tip = 'Kecilkan "Bukaan intake bawah" supaya lebih banyak air permukaan tersedot (≥ 20% debit siphon).';
     } else tip = 'Air permukaan tersedot lewat mangkuk; intake bawah mengambil sisanya.';
+    if (tele && tele !== 'free') {
+      if (level === 'ok') {
+        level = 'warn';
+        title = tele === 'top' ? 'Kepala skimmer mentok di atas' : 'Kepala skimmer mentok di bawah';
+      }
+      tip += teleTip;
+    }
   }
   return { kind: split ? 'split' : 'tee', level, title, tip, rim, HT: S.HT, Hc, zcb, rows };
 }
@@ -181,7 +207,7 @@ export function buildSkimCard({ onFocus } = {}) {
     const yC = Math.min(yBot, y(s.Hc));
     cupIn.setAttribute('y', yC);
     cupIn.setAttribute('height', Math.max(0, yBot - yC));
-    const fl = app.P.sk === 2 && !app.P.box;
+    const fl = isFloating(app.P) && !app.P.box;
     floatL.style.display = floatR.style.display = fl ? '' : 'none';
     floatL.setAttribute('cy', yS);
     floatR.setAttribute('cy', yS);

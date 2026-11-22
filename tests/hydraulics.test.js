@@ -251,3 +251,52 @@ describe('susunan terpisah (pipa skimmer khusus)', () => {
     expect(H.isSplit({ split: true, box: true })).toBe(false);
   });
 });
+
+/* ============ skimmer tipe 3: kepala apung teleskopik dengan ruang luncur ============ */
+describe('kepala apung teleskopik (tipe 3)', () => {
+  it('bibir mengikuti muka air di dalam ruang luncur, mentok di luar ruang luncur', () => {
+    const P = { ...H.defaultParams(), sk: 3, fsub: 7, tmid: 26, tstroke: 4 };
+    const S = H.initialState(P);
+    S.HT = 26.5;
+    expect(H.rimOf(S, P)).toBeCloseTo(25.8, 9);
+    expect(H.teleState(S, P)).toBe('free');
+    S.HT = 29.5;
+    expect(H.rimOf(S, P)).toBeCloseTo(28, 9);
+    expect(H.teleState(S, P)).toBe('top');
+    S.HT = 24;
+    expect(H.rimOf(S, P)).toBeCloseTo(24, 9);
+    expect(H.teleState(S, P)).toBe('bottom');
+  });
+
+  it('geometri: batang tidak mentok ke dasar tabung dan masih masuk ≥ 3 cm di posisi tertinggi', () => {
+    for (const [tmid, tstroke] of [
+      [26, 4],
+      [25, 6],
+      [27, 2],
+    ]) {
+      const P = { ...H.defaultParams(), sk: 3, tmid, tstroke };
+      const g = H.teleGeom(P);
+      const { lo, hi } = H.teleRange(P);
+      expect(lo - g.neck - g.stem).toBeGreaterThanOrEqual(g.tubeBot); // posisi terendah
+      expect(g.tubeTop - (hi - g.neck - g.stem)).toBeGreaterThanOrEqual(3 - 1e-9); // posisi tertinggi
+      expect(g.yJ).toBeLessThan(g.tubeBot);
+    }
+  });
+
+  it('pipa skimmer terpisah: perilaku sama dengan kepala apung (kelaparan pada 4 mm, stabil dengan aqualifter + bibir 7 mm)', () => {
+    const run = (o) => {
+      const P = { ...H.defaultParams(), split: true, n: 2, D: 1.7, sk: 3, sv: 1, sv2: 1, ...o };
+      const S = H.initialState(P);
+      let brk = false;
+      for (let n = 0; n < 300 / 0.02; n++) {
+        H.step(S, P, 0.02);
+        if (S.brk[1]) brk = true;
+      }
+      return { brk, S };
+    };
+    expect(run({ fsub: 4 }).brk).toBe(true);
+    const ok = run({ fsub: 7, vent2: true });
+    expect(ok.brk).toBe(false);
+    expect(ok.S.air[1]).toBeLessThan(0.05);
+  });
+});

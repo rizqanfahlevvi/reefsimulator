@@ -240,6 +240,14 @@ sehingga data rusak/versi lama tidak membuat aplikasi error.
   tersedot), debit tiap pipa, udara di puncak U, kecepatan vs batas gelembung, status & saran berbahasa sederhana, dan
   tombol **Zoom ke skimmer di 3D**. Di 3D, air yang jatuh dari bibir ke kepala skimmer dan gelembung udara yang naik ke
   puncak U kini terlihat.
+- **Skimmer tipe 3 "Kepala apung teleskopik (bilah spiral, tabung bening)"** — bentuk skimmer apung yang umum di
+  toko: kepala merah bercelah dengan bilah spiral, corong, batang yang meluncur di tabung bening. Di susunan pipa
+  terpisah, kaki tank turun ke belokan J lalu riser + tabung bening (lubang cadangan di dasar J); di susunan 1 pipa,
+  kepala ada di cabang tee. Kedalaman bibir memakai "Kedalaman bibir skimmer apung"; pemberat + cable tie tampil bila
+  kedalaman > 4 mm. **Ruang luncur** (tinggi bibir di tengah + panjang): di luar ruang luncur kepala mentok dan berhenti
+  mengikuti muka air (dihitung di model, `teleRange`/`teleState`/`teleGeom` di `src/physics/hydraulics.js`), dan kartu
+  status memberi tahu "mentok atas/bawah". Geometri dipilih supaya batang tidak mentok ke dasar tabung dan masih masuk
+  ≥ 3 cm di posisi tertinggi (diuji).
 - **CFD tank**: kisi MAC staggered 32×20×16, adveksi MacCormack, viskositas eddy, tutup kaku di permukaan,
   proyeksi tekanan PCG/MIC(0). Divergensi sisa ±10⁻³ s⁻¹ (versi 1, kisi collocated + 16 iterasi Gauss–Seidel: ±13 s⁻¹).
 - **CFD filter (3D)**: kisi MAC 49×30×10 @ 1 cm memakai solver yang sama (`src/cfd/mac3d.js`): sekat bercelah/weir,

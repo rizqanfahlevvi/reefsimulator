@@ -11,7 +11,7 @@ import { PROFILES } from './profiles.js';
 const n = (v, d = 1) => (Number.isFinite(+v) ? (+v).toFixed(d).replace('.', ',') : '-');
 const pct = (v, d = 0) => n(v * 100, d) + '%';
 const yes = (b) => (b ? 'ya' : 'tidak');
-const SKIM = ['tanpa surface skimmer', 'mangkuk bercelah tinggi tetap', 'kepala mengapung'];
+const SKIM = ['tanpa surface skimmer', 'mangkuk bercelah tinggi tetap', 'kepala mengapung', 'kepala apung teleskopik (bilah spiral, tabung bening)'];
 const ICON = { bad: '✗', warn: '!', info: 'i', ok: '✓' };
 const table = (head, rows) => ['| ' + head.join(' | ') + ' |', '|' + head.map(() => '---').join('|') + '|', ...rows.map((r) => '| ' + r.join(' | ') + ' |')].join('\n');
 const refTxt = (ids) => (ids?.length ? ' [' + ids.map((id) => REF_INDEX[id]).filter(Boolean).join(', ') + ']' : '');
@@ -79,8 +79,8 @@ export function buildReport(c) {
           P.box
             ? 'overflow box (sisir 26,5 cm)'
             : isSplit(P)
-              ? `2 U-pipe terpisah: pipa bawah ${n(P.zin)} cm (bukaan ${pct(P.kb)}) + pipa khusus ${SKIM[P.sk]}${P.sk === 2 ? ` (bibir ${P.fsub} mm di bawah muka air)` : ` (bibir ${n(P.zrim)} cm)`} · lubang cadangan ${P.bleed ? P.bleed + ' mm' : 'tidak'} · dop ujung buang ${P.cap ? P.cap + ' mm' : 'tidak'} · valve U skimmer ${P.sv2 >= 1 ? 'tidak/terbuka' : pct(P.sv2)} · aqualifter U skimmer ${yes(P.vent2)}`
-              : `bawah ${n(P.zin)} cm (bukaan ${pct(P.kb)}) + ${SKIM[P.sk]}${P.sk === 1 ? ' (bibir ' + n(P.zrim) + ' cm)' : ''}`,
+              ? `2 U-pipe terpisah: pipa bawah ${n(P.zin)} cm (bukaan ${pct(P.kb)}) + pipa khusus ${SKIM[P.sk]}${P.sk >= 2 ? ` (bibir ${P.fsub} mm di bawah muka air${P.sk === 3 ? `, ruang luncur ${n(P.tmid - P.tstroke / 2)}–${n(P.tmid + P.tstroke / 2)} cm` : ''})` : ` (bibir ${n(P.zrim)} cm)`} · lubang cadangan ${P.bleed ? P.bleed + ' mm' : 'tidak'} · dop ujung buang ${P.cap ? P.cap + ' mm' : 'tidak'} · valve U skimmer ${P.sv2 >= 1 ? 'tidak/terbuka' : pct(P.sv2)} · aqualifter U skimmer ${yes(P.vent2)}`
+              : `bawah ${n(P.zin)} cm (bukaan ${pct(P.kb)}) + ${SKIM[P.sk]}${P.sk === 1 ? ' (bibir ' + n(P.zrim) + ' cm)' : P.sk >= 2 ? ` (bibir ${P.fsub} mm di bawah muka air${P.sk === 3 ? `, ruang luncur ${n(P.tmid - P.tstroke / 2)}–${n(P.tmid + P.tstroke / 2)} cm` : ''})` : ''}`,
         ],
         ['Pengaman', `pelampung atas ${yes(P.fswHi)} (${n(FSW.HI_OFF)} cm) · pelampung bawah ${yes(P.fswLo)} (${FSW.LO_OFF} cm) · lubang siphon-break ${yes(P.hole)} · ATO ${yes(P.ato)}`],
         ['Kapas', 'kotor ' + pct(P.clog)],

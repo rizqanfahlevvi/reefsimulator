@@ -3,7 +3,7 @@
  * menyimpan medan kecepatan terakhir dan menyediakan sampling untuk jejak partikel.
  */
 import { G } from '../physics/constants.js';
-import { totalVolume, isSplit, SPLIT } from '../physics/hydraulics.js';
+import { totalVolume, isSplit, SPLIT, teleGeom } from '../physics/hydraulics.js';
 import { T3, F3, cellIndex, trilinear } from './grid.js';
 import { ROCKS, NOZZLE, WAVEMAKER, FILTER, dirOf, siphonX } from '../layout.js';
 
@@ -434,11 +434,12 @@ export class FlowClient {
           const x = siphonX(P.n, i);
           // susunan terpisah: pipa 1 = kepala skimmer langsung di kaki tank (z 3,5), "bawah" = lubang cadangan
           const skPipe = isSplit(P) && i === 1;
-          if (S.qb[i] > 0.2) sinks.push([x, skPipe ? SPLIT.bleedY : P.zin + 0.8, skPipe ? 4.6 : 3.5, S.qb[i]]);
+          const tg = skPipe && P.sk === 3 ? teleGeom(P) : null; // tipe 3: kepala di riser J (z 7,5), lubang di dasar J
+          if (S.qb[i] > 0.2) sinks.push([x, tg ? Math.max(1, tg.yJ) : skPipe ? SPLIT.bleedY : P.zin + 0.8, tg ? 3.5 + tg.dz / 2 : skPipe ? 4.6 : 3.5, S.qb[i]]);
           if (S.qk[i] > 0.2) {
             const k = S.qk[i] / 3;
             const y = S.HT - 0.5;
-            const zc = skPipe ? 3.5 : 7.1;
+            const zc = tg ? 3.5 + tg.dz : skPipe ? 3.5 : 7.1;
             sinks.push([x - 1.7, y, zc - 0.2, k], [x + 1.7, y, zc - 0.2, k], [x, y, zc + 1.6, k]);
           }
         }

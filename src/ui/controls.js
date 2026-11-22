@@ -1,6 +1,6 @@
 /** Panel kontrol: slider, toggle, pilihan pipa/skimmer/kualitas/tampilan, tombol cepat. */
 import { app, emit, waterLitres, salinity, resetState } from '../state.js';
-import { defaultParams, initialState } from '../physics/hydraulics.js';
+import { defaultParams, initialState, isFloating } from '../physics/hydraulics.js';
 import { buildSkimCard } from './skimcard.js';
 import { fmt, $, el } from '../util/format.js';
 import { COLORMAPS, COLORMAP_LABELS } from '../render/colormaps.js';
@@ -51,6 +51,14 @@ export function buildControls(h) {
     { g: 2, id: 'zrim', label: 'Tinggi bibir surface skimmer (tipe tetap)', min: 22, max: 29.5, step: 0.1, d: 1, unit: ' cm', get: () => P().zrim, set: (v) => { P().zrim = v; markSiphon(); } },
     { g: 2, id: 'sv', label: 'Ball valve U-pipe', min: 5, max: 100, step: 1, d: 0, unit: '%', get: () => P().sv * 100, set: (v) => (P().sv = v / 100) },
     { g: 2, id: 'fsub', label: 'Kedalaman bibir skimmer apung di bawah muka air', min: 2, max: 15, step: 1, d: 0, unit: ' mm', get: () => P().fsub, set: (v) => (P().fsub = v) },
+    {
+      g: 2, id: 'tmid', label: 'Tinggi bibir di tengah ruang luncur', min: 20, max: 29.5, step: 0.1, d: 1, unit: ' cm',
+      get: () => P().tmid, set: (v) => { P().tmid = v; markSiphon(); },
+    },
+    {
+      g: 2, id: 'tstroke', label: 'Panjang ruang luncur (naik-turun kepala)', min: 1, max: 8, step: 0.5, d: 1, unit: ' cm',
+      get: () => P().tstroke, set: (v) => { P().tstroke = v; markSiphon(); },
+    },
     {
       g: 2, id: 'bleed', label: 'Lubang cadangan di pipa skimmer (Ø, tinggi 20 cm)', min: 0, max: 12, step: 1, d: 0, unit: ' mm',
       show: (v) => (v === 0 ? 'tanpa' : fmt(v, 0) + ' mm'), get: () => P().bleed, set: (v) => { P().bleed = v; markSiphon(); },
@@ -180,6 +188,7 @@ export function buildControls(h) {
   selectRow(gs[2], 'Surface skimmer di intake', 'skt', [
     ['1', 'Mangkuk bercelah, tinggi tetap (PVC)'],
     ['2', 'Kepala mengapung (model kaca)'],
+    ['3', 'Kepala apung teleskopik (bilah spiral, tabung bening)'],
     ['0', 'Tanpa surface skimmer'],
   ], (val) => {
     P().sk = +val;
@@ -474,7 +483,8 @@ export function buildControls(h) {
     U.zin.inp.disabled = p.box;
     U.kb.inp.disabled = p.box;
     U.zrim.inp.disabled = p.box || p.sk !== 1;
-    U.fsub.inp.disabled = p.box || p.sk !== 2;
+    U.fsub.inp.disabled = p.box || !isFloating(p);
+    U.tmid.inp.disabled = U.tstroke.inp.disabled = p.box || p.sk !== 3;
     for (const k of ['bleed', 'cap', 'sv2']) U[k].inp.disabled = !split;
     U.vent2.chk.disabled = !split;
     // tampilkan hanya kontrol yang berlaku untuk susunan & tipe skimmer saat ini
@@ -485,7 +495,9 @@ export function buildControls(h) {
     hide(subSkim, p.box);
     hide(W.skt, p.box);
     hide(W.s_zrim, p.box || p.sk !== 1);
-    hide(W.s_fsub, p.box || p.sk !== 2);
+    hide(W.s_fsub, p.box || !isFloating(p));
+    hide(W.s_tmid, p.box || p.sk !== 3);
+    hide(W.s_tstroke, p.box || p.sk !== 3);
     for (const k of ['s_bleed', 's_cap', 's_sv2', 't_vent2']) hide(W[k], !split);
     hide(splitHint, !split);
     hide(W.layout, p.box);
@@ -596,7 +608,7 @@ export function buildControls(h) {
     return w;
   };
   const W = {};
-  for (const id of ['layout', 'pipe', 'skt', 's_zd', 's_zin', 's_kb', 's_zrim', 's_fsub', 's_sv', 's_bleed', 's_cap', 's_sv2', 't_venturi', 't_vent2', 't_box']) W[id] = wrap(id);
+  for (const id of ['layout', 'pipe', 'skt', 's_zd', 's_zin', 's_kb', 's_zrim', 's_fsub', 's_tmid', 's_tstroke', 's_sv', 's_bleed', 's_cap', 's_sv2', 't_venturi', 't_vent2', 't_box']) W[id] = wrap(id);
   const subIntake = sub('Intake bawah');
   const subSkim = sub('Surface skimmer');
   const splitHint = el('details', { className: 'ctl-why' }, [
@@ -636,6 +648,8 @@ export function buildControls(h) {
             W.skt,
             W.s_zrim,
             W.s_fsub,
+            W.s_tmid,
+            W.s_tstroke,
             W.s_bleed,
             W.s_cap,
             splitHint,

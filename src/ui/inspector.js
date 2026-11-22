@@ -54,7 +54,7 @@ export const COMPONENTS = {
         (S.airIn[0] > 0 ? ' · menghisap udara!' : '')
       );
     },
-    controls: ['layout', 'skt', 's_zin', 's_kb', 's_zrim', 's_fsub', 'pipe', 's_bleed', 's_cap', 't_vent2', 't_box'],
+    controls: ['layout', 'skt', 's_zin', 's_kb', 's_zrim', 's_fsub', 's_tmid', 's_tstroke', 'pipe', 's_bleed', 's_cap', 't_vent2', 't_box'],
   },
   outlet: {
     title: 'U-pipe & ujung buang (output)',

@@ -29,7 +29,7 @@ export const SPEC = {
     zin: num(2, 22),
     zd: num(18, 27),
     sv: num(0.05, 1),
-    sk: oneOf(0, 1, 2),
+    sk: oneOf(0, 1, 2, 3),
     zrim: num(22, 29.5),
     kb: num(0.05, 1),
     venturi: bool,
@@ -46,6 +46,8 @@ export const SPEC = {
     cap: num(0, 16),
     vent2: bool,
     sv2: num(0.05, 1),
+    tmid: num(20, 29.5),
+    tstroke: num(1, 8),
   },
   V: {
     flow: bool,
