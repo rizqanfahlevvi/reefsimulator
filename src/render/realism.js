@@ -222,19 +222,20 @@ const isTransparent = (m) => (Array.isArray(m) ? m.some((x) => x.transparent) : 
  * Ambient occlusion ditumpangkan (multiply). Dibuat saat pertama dipakai; dibuang saat dimatikan.
  * @returns {{enabled: boolean, setEnabled: (on: boolean) => void, resize: () => void, invalidate: () => void, apply: () => void}}
  */
-export function createAO(renderer, scene, camera, { intensity = 0.9, radius = 2.6, thickness = 2.5, scale = 0.5 } = {}) {
+export function createAO(renderer, scene, camera, opts = {}) {
+  const prm = { intensity: 0.9, radius: 2.6, thickness: 2.5, scale: 0.5, ...opts };
   let st = null;
   let enabled = false;
   const size = () => {
     const v = renderer.getDrawingBufferSize(new THREE.Vector2());
-    return [Math.max(64, Math.round(v.x * scale)), Math.max(64, Math.round(v.y * scale))];
+    return [Math.max(64, Math.round(v.x * prm.scale)), Math.max(64, Math.round(v.y * prm.scale))];
   };
   function build() {
     const [w, h] = size();
     const gtao = new GTAOPass(scene, camera, w, h);
     gtao.output = GTAOPass.OUTPUT.Denoise;
     gtao.renderToScreen = false;
-    gtao.updateGtaoMaterial({ radius, distanceExponent: 1.4, thickness, scale: 1.1, samples: 16 });
+    gtao.updateGtaoMaterial({ radius: prm.radius, distanceExponent: 1.4, thickness: prm.thickness, scale: 1.1, samples: 16 });
     gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
     // kaca, air, sprite label tidak ikut menghitung AO → batu & karang di balik kaca tetap kena
     const orig = gtao._overrideVisibility.bind(gtao);
@@ -250,7 +251,7 @@ export function createAO(renderer, scene, camera, { intensity = 0.9, radius = 2.
     const wb = new THREE.WebGLRenderTarget(w, h);
     const rb = new THREE.WebGLRenderTarget(w, h);
     const mat = new THREE.ShaderMaterial({
-      uniforms: { tAO: { value: null }, uI: { value: intensity } },
+      uniforms: { tAO: { value: null }, uI: { value: prm.intensity } },
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
       fragmentShader:
         'uniform sampler2D tAO; uniform float uI; varying vec2 vUv; void main(){ float ao = texture2D(tAO, vUv).r; gl_FragColor = vec4(vec3(mix(1.0, ao, uI)), 1.0); }',
@@ -286,6 +287,13 @@ export function createAO(renderer, scene, camera, { intensity = 0.9, radius = 2.
       enabled = !!on;
       if (!enabled) dispose();
     },
+    /** Ubah kekuatan/jangkauan AO (gaya realistis vs clay). */
+    setParams(o) {
+      Object.assign(prm, o);
+      if (!st) return;
+      st.mat.uniforms.uI.value = prm.intensity;
+      st.gtao.updateGtaoMaterial({ radius: prm.radius, thickness: prm.thickness });
+    },
     resize() {
       if (!st) return;
       const [w, h] = size();
@@ -309,6 +317,129 @@ export function createAO(renderer, scene, camera, { intensity = 0.9, radius = 2.
       renderer.autoClear = false;
       renderer.render(st.qs, st.qc);
       renderer.autoClear = ac;
+    },
+  };
+}
+
+/* ======================= gaya Clay (claymorphism 3D) ======================= */
+
+const CLAY = {
+  sand: 0xf8e6c6,
+  rock: 0xf79a8c,
+  wood: 0xf2c6a0,
+  woodD: 0xe7b48e,
+  wall: 0xdde9f3,
+  floor: 0xcfe1e8,
+  pvc: 0xfbfbf7,
+  pvcG: 0xb7c7d6,
+  dark: 0x5f7090,
+  sil: 0x5f7090,
+  red: 0xff8d84,
+  green: 0x8edbb6,
+  white: 0xfbfaf6,
+  metal: 0xd5dde7,
+  skCap: 0x5f7090,
+  skLid: 0xcf9f7d,
+  ring: 0xf8e8c9,
+  airstone: 0xe7c59b,
+  floss: 0xffffff,
+};
+const CLAY_BUMP = { sand: 0.8, rock: 1.6, wood: 0.5, woodD: 0.5 };
+/** Pastel bergiliran untuk benda berwarna (karang, ikan) supaya ceria. */
+const CLAY_POP = [0xb9a6f2, 0x8fd9c9, 0xffc27a, 0xff9bb5];
+
+const SNAP_KEYS = ['map', 'vertexColors', 'roughness', 'metalness', 'bumpMap', 'bumpScale', 'opacity', 'envMapIntensity'];
+
+/** Warna pastel (0..1 HSL) dari warna asli: lebih terang & kurang jenuh. */
+export function pastelOf(h, s, l) {
+  return { h, s: Math.min(0.5, s * 0.7 + 0.08), l: Math.min(0.97, 0.66 + 0.28 * l) };
+}
+
+/**
+ * Penata gaya clay: menyimpan keadaan asli tiap material yang diubah sehingga bisa dipulihkan
+ * tanpa memuat ulang halaman.
+ * @returns {{apply: () => void, restore: () => void, active: boolean}}
+ */
+export function createClayStyler(M, scene) {
+  let thumb = null; // tekstur "bekas jari" halus untuk permukaan tanah liat
+  const snaps = new Map();
+  let active = false;
+  const snap = (m) => {
+    if (snaps.has(m)) return;
+    const o = { color: m.color?.clone(), emissive: m.emissive?.clone(), e0: m.userData.e0 };
+    for (const k of SNAP_KEYS) o[k] = m[k];
+    snaps.set(m, o);
+  };
+  const matte = (m, hex, bump = 0) => {
+    snap(m);
+    m.map = null;
+    m.vertexColors = false;
+    m.color.set(hex);
+    m.roughness = 1;
+    m.metalness = 0;
+    m.bumpMap = bump ? thumb : null;
+    m.bumpScale = bump;
+    // intensitas pantulan dikelola world.envScale lewat userData.e0
+    m.userData.e0 = 0.3;
+    m.envMapIntensity = 0.3;
+    m.needsUpdate = true;
+  };
+  return {
+    get active() {
+      return active;
+    },
+    apply() {
+      if (active) return;
+      active = true;
+      thumb ??= noiseTexture(256, { octaves: 4, base: 8, seed: 21, contrast: 0.9 });
+      thumb.repeat.set(4, 3);
+      for (const [k, hex] of Object.entries(CLAY)) if (M[k]) matte(M[k], hex, CLAY_BUMP[k] || 0);
+      snap(M.water);
+      M.water.opacity = 0.16;
+      for (const k of ['waterF', 'waterP', 'glass', 'gEdge']) snap(M[k]);
+      M.waterF.color.set(0xa7e3e6);
+      M.waterP.color.set(0xb7c6f2);
+      M.glass.color.set(0xb4ead9);
+      M.gEdge.color.set(0x7fd3bd);
+      M.gEdge.emissive.set(0x2a7a68);
+      // benda lain (ikan, karang, perangkat): pastel dari warna aslinya
+      const known = new Set(Object.values(M));
+      const hsl = {};
+      let pi = 0;
+      scene.traverse((o) => {
+        if (!o.isMesh || o.userData.overlay) return;
+        for (const m of [].concat(o.material)) {
+          if (!m || known.has(m) || m.transparent || !m.isMeshStandardMaterial) continue;
+          known.add(m);
+          if (m.vertexColors) {
+            matte(m, CLAY.rock, CLAY_BUMP.rock);
+            continue;
+          }
+          m.color.getHSL(hsl);
+          if (m.map) {
+            matte(m, m.roughness >= 0.95 ? CLAY.sand : CLAY.wood, 0.5);
+            continue;
+          }
+          if (hsl.s > 0.25) {
+            matte(m, CLAY_POP[pi++ % CLAY_POP.length]);
+            continue;
+          }
+          const p = pastelOf(hsl.h, hsl.s, hsl.l);
+          matte(m, new THREE.Color().setHSL(p.h, p.s, p.l).getHex());
+        }
+      });
+    },
+    restore() {
+      if (!active) return;
+      active = false;
+      for (const [m, o] of snaps) {
+        if (o.color) m.color.copy(o.color);
+        if (o.emissive) m.emissive.copy(o.emissive);
+        for (const k of SNAP_KEYS) m[k] = o[k];
+        if (o.e0 !== undefined) m.userData.e0 = o.e0;
+        m.needsUpdate = true;
+      }
+      snaps.clear();
     },
   };
 }

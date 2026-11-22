@@ -1347,3 +1347,239 @@ body.plumb-mode #charts {
 .pl-live {
   font-variant-numeric: tabular-nums;
 }
+
+/* =====================================================================
+   Gaya tampilan "Clay" (claymorphism) — aktif bila body.clay (tab Tampilan → Gaya tampilan).
+   Kartu & tombol empuk berbayang lembut, kotak metrik/select "tertekan", palet pastel laut.
+   Slider memakai --p (persen nilai) yang diisi src/ui/claystyle.js supaya bagian terisi tetap terlihat.
+   ===================================================================== */
+body.clay {
+  --bg: #e6eff4;
+  --card: #f2f7fa;
+  --ink: #23303d;
+  --mut: #5f7182;
+  --bd: transparent;
+  --acc: #3d8fd1;
+  --sky1: #cfe6f3;
+  --sky2: #eef4f2;
+  --ok: #4cbf8f;
+  --bad: #f07d72;
+  --c-hi: rgba(255, 255, 255, 0.95);
+  --c-lo: rgba(140, 165, 188, 0.5);
+  --c-face1: #fbfdff;
+  --c-face2: #e5eef4;
+  --c-card1: #f8fbfd;
+  --c-card2: #eaf2f6;
+  --c-well: #e9f1f6;
+  --c-track: #d9e6ee;
+  --c-fill1: #9fd4f5;
+  --c-fill2: #a9ebcb;
+  --c-btn-ink: #2b3e50;
+  --c-out: 7px 7px 16px var(--c-lo), -6px -6px 14px var(--c-hi);
+  --c-in: inset 2px 2px 4px rgba(255, 255, 255, 0.85), inset -3px -3px 7px rgba(140, 165, 188, 0.22);
+  --c-pressed: inset 3px 3px 8px rgba(140, 165, 188, 0.45), inset -3px -3px 8px rgba(255, 255, 255, 0.95);
+  --c-btn: 4px 4px 9px var(--c-lo), -4px -4px 9px var(--c-hi), inset 1px 1px 2px rgba(255, 255, 255, 0.9);
+  font-family: ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: radial-gradient(120% 60% at 0% 0%, #f3e9f5 0%, transparent 55%), radial-gradient(120% 60% at 100% 10%, #e0f3ec 0%, transparent 55%), var(--bg);
+  background-attachment: fixed;
+}
+@media (prefers-color-scheme: dark) {
+  body.clay {
+    --bg: #1c2430;
+    --card: #232d3a;
+    --ink: #e6edf3;
+    --mut: #9fb0c0;
+    --c-hi: rgba(70, 86, 104, 0.55);
+    --c-lo: rgba(5, 8, 12, 0.6);
+    --c-face1: #2d3846;
+    --c-face2: #222b37;
+    --c-card1: #283341;
+    --c-card2: #202935;
+    --c-well: #1e2732;
+    --c-track: #18202a;
+    --c-fill1: #4f8fc4;
+    --c-fill2: #3c9c78;
+    --c-btn-ink: #dce6ef;
+    --c-in: inset 1px 1px 2px rgba(255, 255, 255, 0.06), inset -2px -2px 6px rgba(0, 0, 0, 0.25);
+    --c-pressed: inset 3px 3px 8px rgba(0, 0, 0, 0.45), inset -3px -3px 8px rgba(70, 86, 104, 0.35);
+    --c-btn: 4px 4px 9px var(--c-lo), -3px -3px 8px var(--c-hi), inset 1px 1px 2px rgba(255, 255, 255, 0.07);
+    background: radial-gradient(120% 60% at 0% 0%, #2a2338 0%, transparent 55%), radial-gradient(120% 60% at 100% 10%, #1f3330 0%, transparent 55%), var(--bg);
+  }
+}
+body.clay header h1 {
+  font-weight: 800;
+  letter-spacing: -0.2px;
+}
+body.clay #viewWrap {
+  background: transparent;
+}
+body.clay #view {
+  border: none;
+  border-radius: 26px;
+  box-shadow: var(--c-out), inset 0 0 0 5px rgba(255, 255, 255, 0.45);
+}
+body.clay .card {
+  border: none;
+  border-radius: 22px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: linear-gradient(150deg, var(--c-card1) 0%, var(--c-card2) 100%);
+  box-shadow: var(--c-out), var(--c-in);
+}
+body.clay button,
+body.clay select {
+  border: none;
+  border-radius: 999px;
+  padding: 8px 13px;
+  font-weight: 650;
+  color: var(--c-btn-ink);
+  background: linear-gradient(150deg, var(--c-face1), var(--c-face2));
+  box-shadow: var(--c-btn);
+}
+body.clay button:active {
+  box-shadow: var(--c-pressed);
+}
+body.clay select {
+  background: var(--c-well);
+  box-shadow: var(--c-pressed);
+}
+body.clay button.on {
+  color: #0f3d2c;
+  background: linear-gradient(150deg, #a9ecc9, #6fcfa4);
+  box-shadow: 4px 4px 10px rgba(79, 170, 128, 0.45), -4px -4px 9px var(--c-hi), inset 2px 2px 4px rgba(255, 255, 255, 0.6), inset -3px -3px 6px rgba(20, 90, 60, 0.18);
+}
+body.clay button.off,
+body.clay .pl-danger {
+  color: #5a1410;
+  background: linear-gradient(150deg, #ffc1b8, #f48f84);
+}
+body.clay .pl-primary {
+  color: #fff;
+  background: linear-gradient(150deg, #8cc8f2, #4a9be0);
+}
+body.clay .tabs {
+  border: none;
+  border-radius: 999px;
+  padding: 5px;
+  background: var(--c-well);
+  box-shadow: var(--c-pressed);
+}
+body.clay .tabs .tab {
+  border-radius: 999px;
+  box-shadow: none;
+  background: transparent;
+  color: var(--mut);
+  font-weight: 750;
+}
+body.clay .tabs .tab.active {
+  color: #fff;
+  background: linear-gradient(150deg, #8cc8f2, #4a9be0);
+  box-shadow: 3px 3px 8px rgba(74, 155, 224, 0.45), inset 2px 2px 4px rgba(255, 255, 255, 0.45), inset -3px -3px 6px rgba(20, 60, 110, 0.2);
+}
+body.clay .m {
+  border-radius: 16px;
+  padding: 7px 10px;
+  background: var(--c-well);
+  box-shadow: var(--c-pressed);
+}
+body.clay details {
+  border-top: 2px dashed rgba(140, 165, 188, 0.25);
+}
+body.clay details:first-of-type {
+  border-top: none;
+}
+body.clay input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 28px;
+}
+body.clay input[type='range']::-webkit-slider-runnable-track {
+  height: 11px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--c-fill1), var(--c-fill2)) 0 0 / var(--p, 50%) 100% no-repeat, var(--c-track);
+  box-shadow: inset 2px 2px 5px rgba(100, 130, 155, 0.4), inset -2px -2px 5px rgba(255, 255, 255, 0.55);
+}
+body.clay input[type='range']::-moz-range-track {
+  height: 11px;
+  border-radius: 999px;
+  background: var(--c-track);
+  box-shadow: inset 2px 2px 5px rgba(100, 130, 155, 0.4);
+}
+body.clay input[type='range']::-moz-range-progress {
+  height: 11px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--c-fill1), var(--c-fill2));
+}
+body.clay input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  margin-top: -6.5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #eef5fa 45%, #cfdfeb 100%);
+  box-shadow: 3px 4px 8px rgba(80, 110, 140, 0.5), -2px -2px 5px rgba(255, 255, 255, 0.6);
+}
+body.clay input[type='range']::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #eef5fa 45%, #cfdfeb 100%);
+  box-shadow: 3px 4px 8px rgba(80, 110, 140, 0.5);
+}
+body.clay .tg input {
+  accent-color: #5cc39a;
+}
+body.clay input[type='number'],
+body.clay input[type='text'] {
+  border: none;
+  border-radius: 12px;
+  background: var(--c-well);
+  box-shadow: var(--c-pressed);
+  color: var(--ink);
+}
+body.clay #status {
+  border-radius: 999px;
+  padding: 5px 13px;
+  box-shadow: 3px 3px 8px rgba(60, 90, 110, 0.3), inset 2px 2px 3px rgba(255, 255, 255, 0.55);
+}
+body.clay #simClock,
+body.clay #hint {
+  border: none;
+  border-radius: 999px;
+  box-shadow: 3px 3px 8px rgba(80, 110, 140, 0.3), inset 2px 2px 3px rgba(255, 255, 255, 0.85);
+}
+body.clay #simClock {
+  padding: 5px 12px;
+}
+body.clay #vbtn {
+  gap: 6px;
+}
+body.clay #vbtn button {
+  border: none;
+  border-radius: 999px;
+  padding: 6px 12px;
+  color: #1b2a38;
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.95), rgba(232, 241, 247, 0.92));
+  box-shadow: 3px 3px 8px rgba(60, 90, 120, 0.35), inset 1px 1px 2px #fff;
+}
+body.clay #vbtn button.flowbtn {
+  color: #fff;
+  background: linear-gradient(150deg, #8cc8f2, #4a9be0);
+}
+body.clay #vbtn button.flowbtn.active {
+  color: #1d5f9e;
+  background: linear-gradient(150deg, #ffffff, #e3f0fa);
+}
+body.clay #vbtn .plumbbtn {
+  color: #1f6b4f;
+  background: linear-gradient(150deg, #effbf5, #cdf0de);
+}
+body.clay #vbtn .plumbbtn.active {
+  color: #fff;
+  background: linear-gradient(150deg, #7fd8ae, #3fae80);
+}
+body.clay canvas.ch {
+  border-radius: 14px;
+}

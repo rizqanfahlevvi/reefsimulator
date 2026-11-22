@@ -266,4 +266,12 @@ sehingga data rusak/versi lama tidak membuat aplikasi error.
   - beban bertingkat: AO hanya di kualitas **Tinggi** (di HP layar padat hanya bila Tinggi dipilih sendiri, bukan
     Otomatis), berkas cahaya mati di **Hemat**; turun otomatis bila FPS rendah atau context WebGL pernah hilang.
     Status AO & berkas cahaya tercantum di laporan diagnostik.
+- **Gaya tampilan Clay** (tab **Tampilan → Gaya tampilan**; bawaan tetap Realistis, pilihan tersimpan):
+  - panel claymorphism (`body.clay` di `src/styles.css`): kartu & tombol empuk berbayang lembut, kotak metrik dan
+    select "tertekan", tab aktif biru menggembung, slider dengan bola dan bagian terisi (`--p`, `src/ui/claystyle.js`),
+    palet pastel laut, varian mode gelap sistem;
+  - 3D tanah liat (`createClayStyler` di `src/render/realism.js`): material matte pastel (batu koral, pasir krem,
+    perabot peach, karang & ikan pastel) dengan tekstur "bekas jari" halus, air jernih, cahaya lebih lembut, tone
+    mapping Neutral, AO lebih kuat, berkas cahaya mati. Material asli disimpan dan dipulihkan saat kembali ke
+    Realistis — tanpa memuat ulang halaman.
 - Angka adalah acuan untuk dikalibrasi saat uji air tawar, bukan pengganti uji itu.

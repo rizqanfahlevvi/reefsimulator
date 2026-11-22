@@ -17,6 +17,7 @@ import { buildClock } from './ui/clock.js';
 import { buildInspector } from './ui/inspector.js';
 import { plumbingSummary, storedRetLine } from './plumb/store.js';
 import { applyRetLine } from './plumb/hydro.js';
+import { applyUIStyle } from './ui/claystyle.js';
 import { toast } from './ui/toast.js';
 import { diag, logEvent, errorText, installGlobalHandlers } from './diag.js';
 import { $ } from './util/format.js';
@@ -39,6 +40,7 @@ let world = null;
     }
   }
 }
+applyUIStyle(app.LOOK.style); // gaya tampilan panel (Realistis / Clay)
 /* rakit pipa fase 3: jalur return dari desain, bila dipilih "pakai sebagai pipa return di simulasi" */
 {
   const line = storedRetLine();
@@ -129,6 +131,11 @@ const hooks = {
   applyView: () => world?.applyView(),
   applyGlass: () => world?.applyGlass(),
   applyBg: () => world?.applyBg(),
+  applyStyle: () => {
+    applyUIStyle(app.LOOK.style);
+    world?.setStyle(app.LOOK.style);
+    logEvent('ubah', 'Gaya tampilan: ' + (app.LOOK.style === 'clay' ? 'Clay' : 'Realistis'));
+  },
   setQuality: (l) => world?.setQuality(l, true), // dipilih pengguna (AO boleh aktif di HP)
   setAutoQuality: (v) => (autoQuality = v),
   resetFlow: () => (flow.resetNext = true),
@@ -286,6 +293,7 @@ if (world) {
   new ResizeObserver(world.resize).observe(view);
   world.resize();
   world.setView('iso');
+  world.setStyle(app.LOOK.style);
 }
 ui.applyView();
 ui.syncUI();

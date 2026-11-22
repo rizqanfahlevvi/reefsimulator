@@ -10,7 +10,7 @@ const GROUPS = ['Air', 'Pompa return', 'Siphon U-pipe', 'Arus & visualisasi CFD'
 const OPEN_GROUPS = new Set();
 
 /**
- * @param {object} h hooks: rebuildSiphon, applyView, applyGlass, applyBg, setQuality, setAutoQuality, resetFlow, updElec
+ * @param {object} h hooks: rebuildSiphon, applyView, applyGlass, applyBg, applyStyle, setQuality, setAutoQuality, resetFlow, updElec
  */
 export function buildControls(h) {
   const S = () => app.S;
@@ -155,6 +155,13 @@ export function buildControls(h) {
     h.rebuildSiphon();
     syncUI();
   });
+  selectRow(gs[6], 'Gaya tampilan', 'stylesel', [
+    ['real', 'Realistis (bawaan)'],
+    ['clay', 'Clay — claymorphism (panel & 3D pastel)'],
+  ], (v) => {
+    app.LOOK.style = v;
+    h.applyStyle();
+  }).value = app.LOOK.style;
   selectRow(gs[6], 'Kualitas grafis', 'qual', [
     ['a', 'Otomatis (menyesuaikan perangkat)'],
     ['0', 'Tinggi (+ bayangan halus/AO)'],
@@ -448,6 +455,7 @@ export function buildControls(h) {
     setv('sktype', app.LOOK.skim);
     setv('bgsel', app.LOOK.bg);
     setv('lampsel', app.LOOK.lamp);
+    setv('stylesel', app.LOOK.style);
     setv('qual', app.quality);
     if ($('t_dark')) $('t_dark').checked = app.LOOK.dark;
     if ($('bgColor')) $('bgColor').style.display = app.LOOK.bg === 'custom' ? '' : 'none';
@@ -545,6 +553,7 @@ export function buildControls(h) {
       id: 'tampilan',
       title: 'Tampilan',
       groups: [
+        ['Gaya tampilan', ['stylesel']],
         ['Ornamen', ['t_fish', 't_coral', 't_rock', 't_sand', 't_lamp', 't_room']],
         ['Simulasi & grafis', ['s_sp', 'qual', 's_tint', 't_flow', 't_clear', 't_label', 't_hot']],
         ['Skimmer, latar & lampu', ['t_dark', 'sktype', 'bgsel', 'bgColor', 'lampsel', 's_li']],

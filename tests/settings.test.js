@@ -100,6 +100,11 @@ describe('pengaturan: simpan dan muat', () => {
     warn.mockRestore();
   });
 
+  it('gaya tampilan: hanya real/clay yang diterima', () => {
+    expect(sanitize({ v: SCHEMA, LOOK: { style: 'clay' } }, []).LOOK).toEqual({ style: 'clay' });
+    expect(sanitize({ v: SCHEMA, LOOK: { style: 'neon' } }, []).LOOK).toEqual({});
+  });
+
   it('nilai di luar rentang dipotong, tipe salah & pilihan tak dikenal dibuang', () => {
     const s = sanitize(
       {

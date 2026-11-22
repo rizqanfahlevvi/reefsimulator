@@ -68,6 +68,7 @@ export const SPEC = {
     bgc: color,
     lamp: oneOf('white', 'cool', 'mix', 'blue', 'purple', 'off'),
     li: num(10, 100),
+    style: oneOf('real', 'clay'),
   },
   FV: {
     orient: oneOf('h', 'v'),

@@ -42,7 +42,7 @@ export const app = {
   /** Wavemaker: debit (L/jam), arah, tinggi. */
   WM: { q: 1000, yaw: 0, pitch: 0, y: 16 },
   /** Tampilan: mode gelap, tipe skimmer, latar, lampu. */
-  LOOK: { dark: false, skim: 'air', bg: 'black', bgc: '#1e3a5f', lamp: 'mix', li: 80 },
+  LOOK: { dark: false, skim: 'air', bg: 'black', bgc: '#1e3a5f', lamp: 'mix', li: 80, style: 'real' },
   /** Tinggi bidang potong mendatar (cm). */
   sliceY: 14,
   /** Visualisasi CFD: arah bidang, posisi bidang tegak, palet, nilai peta, skala, animasi. */

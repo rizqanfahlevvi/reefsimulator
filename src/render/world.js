@@ -18,7 +18,8 @@ import { buildLabels } from './scene/labels.js';
 import { createFlowViz } from './flowviz.js';
 import { createFlowFog } from './flowfog.js';
 import { GEO } from '../physics/constants.js';
-import { applySurfaceDetail, createGodRays, createAO } from './realism.js';
+import { applySurfaceDetail, createGodRays, createAO, createClayStyler } from './realism.js';
+import * as THREE from 'three';
 
 const LAMP = {
   off: [0, 0, 0],
@@ -71,8 +72,15 @@ export function createWorld(container, app, flow) {
   const rays = createGodRays(scene, uniforms.uT);
   const ao = createAO(renderer, scene, camera);
   let raysOn = true;
-  /** Penguat kaustik di dasar/batu untuk gaya realistis. */
-  const CAUSTIC_K = 1.5;
+  /** Penguat kaustik di dasar/batu: gaya realistis lebih kuat, clay lembut. */
+  let causticK = 1.5;
+  /* gaya tampilan: 'real' (bawaan) atau 'clay' (claymorphism: matte pastel, AO lebih kuat, cahaya lembut) */
+  const clay = createClayStyler(M, scene);
+  let style = 'real';
+  const STYLE = {
+    real: { hemi: 1, sun: 1, ground: 0x8a7f72, shadowR: 3, tone: THREE.ACESFilmicToneMapping, exposure: renderer.toneMappingExposure, caustic: 1.5, ao: { intensity: 0.9, radius: 2.6, thickness: 2.5 } },
+    clay: { hemi: 1.7, sun: 0.75, ground: 0xe0cfc6, shadowR: 9, tone: THREE.NeutralToneMapping, exposure: 1.05, caustic: 0.3, ao: { intensity: 1, radius: 3.8, thickness: 3 } },
+  };
 
   /*
    * Env map dipasang langsung ke material (bukan scene.environment) karena three r163+
@@ -214,8 +222,8 @@ export function createWorld(container, app, flow) {
     /* mode gelap dan lampu */
     {
       const d = LOOK.dark;
-      hemi.intensity = LIGHT.hemi * (d ? 0.06 : 1);
-      sun.intensity = d ? 0 : LIGHT.sun;
+      hemi.intensity = LIGHT.hemi * (d ? 0.06 : 1) * STYLE[style].hemi;
+      sun.intensity = d ? 0 : LIGHT.sun * STYLE[style].sun;
       envScale(d ? 0.08 : 1);
       container.classList.toggle('dark', d);
     }
@@ -229,10 +237,11 @@ export function createWorld(container, app, flow) {
       for (const m of corals.coralMats) m.emissiveIntensity = fl;
       const e = on ? 0.35 + 0.9 * k : 0.06;
       M.led.color.setRGB(L[0] * e * 1.6, L[1] * e * 1.6, L[2] * e * 1.6);
-      uniforms.uOn.value = on ? Math.min(1.4, k) * CAUSTIC_K : 0;
-      rays.update(S.HT, raysOn && on ? k * (LOOK.dark ? 1.6 : 1) : 0, L, camera);
+      uniforms.uOn.value = on ? Math.min(1.4, k) * causticK : 0;
+      rays.update(S.HT, raysOn && style === 'real' && on ? k * (LOOK.dark ? 1.6 : 1) : 0, L, camera);
       const tw = on && LOOK.lamp === 'blue' ? 0.55 : on && LOOK.lamp === 'mix' ? 0.25 : 0;
-      M.water.color.setRGB(0.024, 0.34 - 0.12 * tw, 0.75 + 0.15 * tw);
+      if (style === 'clay') M.water.color.setRGB(0.34 - 0.2 * tw, 0.7 - 0.12 * tw, 0.92);
+      else M.water.color.setRGB(0.024, 0.34 - 0.12 * tw, 0.75 + 0.15 * tw);
     }
     const lv = V.lamp && camera.position.y < 78;
     if (lv !== lampVisible) {
@@ -395,6 +404,26 @@ export function createWorld(container, app, flow) {
     for (let i = 0; i < labels.length; i++) labels[i].visible = V.label && (i < 4 || P.ato);
   }
 
+  /** Ganti gaya tampilan 3D tanpa memuat ulang (material asli disimpan & dipulihkan). */
+  function setStyle(s) {
+    s = s === 'clay' ? 'clay' : 'real';
+    if (s === style) return;
+    style = s;
+    const st = STYLE[s];
+    if (s === 'clay') clay.apply();
+    else clay.restore();
+    renderer.toneMapping = st.tone;
+    renderer.toneMappingExposure = st.exposure;
+    hemi.groundColor.set(st.ground);
+    sun.shadow.radius = st.shadowR;
+    causticK = st.caustic;
+    ao.setParams(st.ao);
+    const k = envK; // terapkan ulang intensitas pantulan (mode gelap) ke nilai dasar yang baru
+    envK = -1;
+    envScale(k);
+    ctx.markShadowsDirty();
+  }
+
   const overlay = (o) => o.userData.overlay || o.isSprite || o.isPoints;
   const vis = [];
   function render() {
@@ -438,8 +467,9 @@ export function createWorld(container, app, flow) {
     },
     /** Efek gaya realistis yang sedang aktif (untuk diagnostik). */
     get effects() {
-      return { ao: ao.enabled, rays: raysOn };
+      return { style, ao: ao.enabled, rays: raysOn && style === 'real' };
     },
+    setStyle,
     fviz,
     hot,
     aim,
