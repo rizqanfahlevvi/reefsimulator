@@ -24,7 +24,7 @@ export const SPEC = {
     hmax: num(0.3, 2),
     spd: num(0.3, 1),
     rv: num(0.05, 1),
-    n: oneOf(1),
+    n: oneOf(1, 2),
     D: oneOf(1.7, 1.8, 2.2),
     zin: num(2, 22),
     zd: num(18, 27),
@@ -40,6 +40,12 @@ export const SPEC = {
     fswLo: bool,
     clog: num(0, 0.95),
     disp: num(0, 10),
+    split: bool,
+    fsub: num(2, 15),
+    bleed: num(0, 12),
+    cap: num(0, 16),
+    vent2: bool,
+    sv2: num(0.05, 1),
   },
   V: {
     flow: bool,
@@ -162,6 +168,7 @@ export function snapshot(app, EL) {
 /** Terapkan pengaturan tervalidasi ke state aplikasi dan tabel listrik. */
 export function applySettings(app, EL, s) {
   Object.assign(app.P, s.P);
+  app.P.n = app.P.split ? 2 : 1; // jumlah pipa mengikuti susunan intake
   Object.assign(app.V, s.V);
   Object.assign(app.NZL, s.NZL);
   Object.assign(app.WM, s.WM);

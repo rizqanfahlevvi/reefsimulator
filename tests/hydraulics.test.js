@@ -196,3 +196,58 @@ describe('fungsi bantu', () => {
     expect(Math.abs(H.friction(4001) - H.friction(3999))).toBeLessThan(1e-4);
   });
 });
+
+/* ============ susunan 2 U-pipe terpisah: pipa bawah + pipa khusus skimmer apung ============ */
+describe('susunan terpisah (pipa skimmer khusus)', () => {
+  const base = { split: true, n: 2, D: 1.7, sk: 2, sv: 1, sv2: 1 };
+  function runSplit(over, secs = 300) {
+    const P = { ...H.defaultParams(), ...base, ...over };
+    const S = H.initialState(P);
+    let brkAt = null;
+    for (let n = 0; n < secs / 0.02; n++) {
+      H.step(S, P, 0.02);
+      if (brkAt === null && S.brk[1]) brkAt = S.t;
+    }
+    return { P, S, brkAt };
+  }
+
+  it('kasus nyata: pipa 20 mm, kepala apung 4 mm, tanpa tambahan → siphon skimmer kelaparan lalu putus; pipa bawah tetap jalan', () => {
+    const { S, brkAt } = runSplit({});
+    expect(brkAt).not.toBe(null);
+    expect(brkAt).toBeLessThan(120);
+    expect(S.brk[0]).toBe(false);
+    expect(S.q.s * 3.6).toBeGreaterThan(250); // seluruh aliran lewat pipa bawah
+  });
+
+  it('lubang cadangan 8 mm atau bibir apung 8 mm → stabil tanpa udara', () => {
+    for (const o of [{ bleed: 8 }, { fsub: 8 }]) {
+      const { S, brkAt } = runSplit(o);
+      expect(brkAt).toBe(null);
+      expect(S.air[1]).toBeLessThan(0.05);
+      expect((S.qk[1] + S.qb[1]) * 3.6).toBeGreaterThan(120);
+    }
+    const { S } = runSplit({ bleed: 8 });
+    expect(S.qb[1]).toBeGreaterThan(0); // sebagian dari lubang cadangan
+  });
+
+  it('dop berlubang 8 mm: aliran pelan → gelembung menumpuk & putus; dengan aqualifter tetap jalan', () => {
+    expect(runSplit({ cap: 8 }).brkAt).not.toBe(null);
+    const ok = runSplit({ cap: 8, vent2: true });
+    expect(ok.brkAt).toBe(null);
+    expect(ok.S.air[1]).toBeLessThan(0.05);
+  });
+
+  it('air tetap terjaga (tanpa ATO): volume total + tumpahan konstan', () => {
+    const P = { ...H.defaultParams(), ...base, bleed: 6, ato: false };
+    const S = H.initialState(P);
+    const v0 = H.totalVolume(S, P);
+    for (let n = 0; n < 300 / 0.02; n++) H.step(S, P, 0.02);
+    expect(H.totalVolume(S, P) + S.spill).toBeCloseTo(v0, 0);
+  });
+
+  it('pipa bawah susunan terpisah tidak memakai skimmer; mode overflow box mengabaikan susunan terpisah', () => {
+    const { S } = runSplit({ bleed: 8 }, 60);
+    expect(S.qk[0]).toBe(0);
+    expect(H.isSplit({ split: true, box: true })).toBe(false);
+  });
+});

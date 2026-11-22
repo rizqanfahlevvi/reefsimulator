@@ -9,7 +9,7 @@
 import * as THREE from 'three';
 import { app, waterLitres } from '../state.js';
 import { HOT_KEYS, AIM, hotBoxes, hotAnchor, pickHot, aimGeometry } from '../render/hotspots.js';
-import { rimOf, skimmerActive } from '../physics/hydraulics.js';
+import { rimOf, skimmerActive, isSplit } from '../physics/hydraulics.js';
 import { GEO } from '../physics/constants.js';
 import { logEvent } from '../diag.js';
 import { el, fmt, $ } from '../util/format.js';
@@ -39,6 +39,13 @@ export const COMPONENTS = {
     desc: 'Lubang hisap di tank: saringan bawah + mangkuk surface skimmer (atau overflow box).',
     info: ({ S, P }) => {
       const q = S.q;
+      if (isSplit(P)) {
+        // susunan terpisah: pipa bawah & pipa skimmer dilaporkan sendiri-sendiri
+        const qs1 = S.qk[1] + S.qb[1];
+        const dep = (S.Hc[1] - (S.rim[1] - GEO.CUPD)) * 10;
+        const st = S.brk[1] ? 'PUTUS' : S.airIn[1] > 0.3 ? 'kepala skimmer kering — menghisap udara!' : `genangan di kepala skimmer ${fmt(Math.max(0, dep), 0)} mm`;
+        return `Pipa bawah ${L(Math.max(0, S.qb[0]))} · pipa skimmer ${L(Math.max(0, qs1))}${S.qb[1] > 0.2 ? ` (lubang cadangan ${L(S.qb[1])})` : ''} · ${st}`;
+      }
       const rim = rimOf(S, P);
       const sk = skimmerActive(P, rim);
       return (
@@ -47,7 +54,7 @@ export const COMPONENTS = {
         (S.airIn[0] > 0 ? ' · menghisap udara!' : '')
       );
     },
-    controls: ['skt', 's_zin', 's_kb', 's_zrim', 'pipe', 't_box'],
+    controls: ['layout', 'skt', 's_zin', 's_kb', 's_zrim', 's_fsub', 'pipe', 's_bleed', 's_cap', 't_vent2', 't_box'],
   },
   outlet: {
     title: 'U-pipe & ujung buang (output)',

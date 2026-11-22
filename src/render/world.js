@@ -314,7 +314,7 @@ export function createWorld(container, app, flow) {
       o.cores[0].visible = o.cores[1].visible = o.cores[2].visible = cv;
       o.air.visible = V.clear && air > 0.03;
       o.air.scale.y = Math.max(0.05, air * 7.2);
-      o.handle.rotation.z = ((1 - P.sv) * Math.PI) / 2;
+      if (o.handle) o.handle.rotation.z = ((1 - (o.skPipe ? P.sv2 : P.sv)) * Math.PI) / 2;
       if (o.cupG) {
         const rim = S.rim[i];
         const zcb = rim - GEO.CUPD;
@@ -327,8 +327,8 @@ export function createWorld(container, app, flow) {
           o.cupW.scale.y = hh;
           o.cupW.position.set(o.x, zcb + hh / 2, o.zb);
         }
-        o.brW.visible = V.clear && !br;
-        if (o.brW.visible) {
+        if (o.brW) o.brW.visible = V.clear && !br;
+        if (o.brW?.visible) {
           const hh = Math.max(0.05, Math.min(top, zcb) - o.zj);
           o.brW.scale.y = hh;
           o.brW.position.set(o.x, o.zj + hh / 2, o.zb);

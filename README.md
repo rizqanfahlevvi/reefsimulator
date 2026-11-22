@@ -223,6 +223,16 @@ sehingga data rusak/versi lama tidak membuat aplikasi error.
   weir tajam dengan koreksi Villemonte. Numeriknya sengaja dipertahankan bit-per-bit sama dengan versi 1
   (diuji otomatis di `tests/hydraulics.test.js`). Integrasi kini memakai langkah tetap 0,02 dtk
   sehingga hasil tidak bergantung pada frame rate.
+- **Susunan intake "2 U-pipe terpisah"** (tab Tank → Siphon U-pipe → Susunan intake; `skimmerPipe` di
+  `src/physics/hydraulics.js`): pipa 0 hanya intake bawah, pipa 1 khusus surface skimmer (kepala apung dengan kedalaman
+  bibir yang bisa diatur, atau mangkuk tetap). Pipa skimmer hanya dipasok lewat bibir (weir Villemonte) dan lubang
+  cadangan opsional (lubang tajam, Cd 0,62, di 20 cm); level di dalam kepala skimmer dicari sehingga pasokan = tarikan
+  siphon. Bila tarikan melebihi pasokan walau kepala skimmer kering, udara ikut tersedot ("siphon kelaparan"). Air
+  permukaan selalu membawa gelembung mikro; gelembung hanya tersapu bila kecepatan > 0,35·√(g·D) (gelembung Taylor,
+  Davies & Taylor 1950). Dop berlubang di ujung buang: rugi jet K = (1/(Cc·β²))² − 1. Aqualifter khusus U skimmer dan
+  valve U skimmer opsional. Contoh (pipa TY 20 mm, kepala apung 4 mm, tanpa tambahan): siphon skimmer putus ±20 detik
+  setelah dipancing; lubang cadangan 6–10 mm atau bibir 8 mm → stabil tanpa udara; dop 8 mm hanya stabil bila ada
+  aqualifter. Diuji di `tests/hydraulics.test.js`; tanpa susunan ini model lama tetap bit-identik.
 - **CFD tank**: kisi MAC staggered 32×20×16, adveksi MacCormack, viskositas eddy, tutup kaku di permukaan,
   proyeksi tekanan PCG/MIC(0). Divergensi sisa ±10⁻³ s⁻¹ (versi 1, kisi collocated + 16 iterasi Gauss–Seidel: ±13 s⁻¹).
 - **CFD filter (3D)**: kisi MAC 49×30×10 @ 1 cm memakai solver yang sama (`src/cfd/mac3d.js`): sekat bercelah/weir,

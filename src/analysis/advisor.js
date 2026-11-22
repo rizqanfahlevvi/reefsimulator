@@ -7,7 +7,7 @@
  *   ev: tingkat bukti A/B/C (lihat references.js)
  *   action: { label, set: [[jalur, nilai], ...] } — perubahan parameter sekali klik
  */
-import { equilibriumLevel, skimmerActive, rimOf, totalVolume } from '../physics/hydraulics.js';
+import { equilibriumLevel, skimmerActive, rimOf, totalVolume, isSplit } from '../physics/hydraulics.js';
 import { GEO, FSW } from '../physics/constants.js';
 import { NOZZLE, dirOf, siphonX } from '../layout.js';
 import { PROFILES } from './profiles.js';
@@ -147,8 +147,20 @@ export function analyze({ app, stats = {}, cfdAge = 0, eq = null, pulse = null }
         refs: ['davies1950'], ev: 'B', action: P.venturi ? null : { label: 'Nyalakan venturi', set: [['P.venturi', true]] },
       });
     }
+    // susunan terpisah: pipa khusus skimmer kelaparan (tarikan siphon > pasokan lewat bibir)
+    if (isSplit(P) && (S.brk[1] || S.airIn[1] > 0 || S.air[1] > 0.15)) {
+      const fix = P.bleed > 0 ? null : { label: 'Tambah lubang cadangan 6 mm', set: [['P.bleed', 6]] };
+      add({
+        id: 'skimStarve', cat: 'hidrolik', level: S.brk[1] ? 'bad' : 'warn', title: 'Pipa skimmer terpisah kelaparan air',
+        now: S.brk[1] ? 'siphon skimmer putus' : 'kepala skimmer kering / udara ' + Math.round(S.air[1] * 100) + '%',
+        target: 'pasokan bibir ≥ tarikan siphon; kecepatan > 0,35·√(g·D)',
+        advice:
+          'Kepala skimmer hanya dipasok lewat bibirnya, sedangkan siphon menarik lebih banyak. Pilihan tanpa valve: lubang cadangan kecil di pipa skimmer (memasok kekurangan dari bawah), benamkan bibir apung lebih dalam (6–8 mm), atau dop berlubang di ujung buang + aqualifter di puncak U skimmer.',
+        refs: ['villemonte1947', 'davies1950'], ev: 'B', action: fix,
+      });
+    }
     const rim = rimOf(S, P);
-    if (skimmerActive(P, rim)) {
+    if (skimmerActive(P, rim) && !isSplit(P)) {
       const head = S.HT - rim;
       const share = q.s > 1 ? q.k / q.s : 0;
       if (S.airIn.slice(0, P.n).some((v) => v > 0)) {

@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { StaticBatch, boxGeo, cylGeo, sphereGeo, tubeGeo, elbowGeo, mesh } from '../geom.js';
 import { GEO } from '../../physics/constants.js';
-import { rimOf, skimmerActive } from '../../physics/hydraulics.js';
+import { rimOf, skimmerActive, isSplit, SPLIT } from '../../physics/hydraulics.js';
 import { siphonX, SIPHON } from '../../layout.js';
 import { makePoints, makePath, disposePoints } from './particles.js';
 
@@ -45,10 +45,17 @@ export function createSiphon(scene, M) {
     const b = new StaticBatch();
     const pipeOpts = { order: 5, cast: !V.clear };
 
+    const split = isSplit(P);
     for (let i = 0; i < n; i++) {
       const x = siphonX(n, i);
-      const o = { x, sk: skOn, zb: zi + 3.6, zj: zin + GEO.ZJ };
-      b.add(cylGeo([x, zin, zi], [x, yc - R, zi], ro, 20), pm, pipeOpts);
+      // susunan terpisah: pipa 0 hanya intake bawah, pipa 1 khusus surface skimmer (kepala di kaki tank)
+      const skPipe = split && i === 1;
+      const skHere = skPipe || (skOn && !split);
+      const rimI = skPipe ? rimOf(S, P, 1) : rim0;
+      const flI = P.sk === 2;
+      const legBot = skPipe ? (flI ? rimI - GEO.CUPD - 3.5 : rimI - GEO.CUPD) : zin;
+      const o = { x, sk: skHere, skPipe, zb: skPipe ? zi : zi + 3.6, zj: zin + GEO.ZJ };
+      b.add(cylGeo([x, legBot, zi], [x, yc - R, zi], ro, 20), pm, pipeOpts);
       b.add(cylGeo([x, yc, zi - R], [x, yc, zo + R], ro, 20), pm, pipeOpts);
       b.add(cylGeo([x, yc - R, zo], [x, P.zd, zo], ro, 20), pm, pipeOpts);
       b.add(elbowGeo(x, yc - R, zi - R, R, ro * 1.14, true), M.pvc, { cast: true });
@@ -56,27 +63,40 @@ export function createSiphon(scene, M) {
       b.add(cylGeo([x, yc - R - 1.1, zi], [x, yc - R, zi], ro * 1.14, 20), M.pvc);
       b.add(cylGeo([x, yc - R - 1.1, zo], [x, yc - R, zo], ro * 1.14, 20), M.pvc);
 
-      /* saringan intake bawah */
-      b.add(cylGeo([x, zin - 0.2, zi], [x, zin + 2.2, zi], ro * 1.4, 16), M.green);
-      for (let k = 0; k < 8; k++) {
-        const a = (k * Math.PI) / 4;
-        const cx = x + Math.cos(a) * ro * 1.42;
-        const cz = zi + Math.sin(a) * ro * 1.42;
-        b.add(boxGeo(cx - 0.1, cx + 0.1, zin + 0.1, zin + 1.9, cz - 0.06, cz + 0.06), M.dark);
+      /* saringan intake bawah (tidak ada di pipa khusus skimmer) */
+      if (!skPipe) {
+        b.add(cylGeo([x, zin - 0.2, zi], [x, zin + 2.2, zi], ro * 1.4, 16), M.green);
+        for (let k = 0; k < 8; k++) {
+          const a = (k * Math.PI) / 4;
+          const cx = x + Math.cos(a) * ro * 1.42;
+          const cz = zi + Math.sin(a) * ro * 1.42;
+          b.add(boxGeo(cx - 0.1, cx + 0.1, zin + 0.1, zin + 1.9, cz - 0.06, cz + 0.06), M.dark);
+        }
+      } else {
+        // lubang cadangan (menghadap depan) & dop berlubang di ujung buang
+        if (P.bleed > 0) {
+          b.add(cylGeo([x, SPLIT.bleedY, zi + ro - 0.06], [x, SPLIT.bleedY, zi + ro + 0.04], Math.max(0.18, P.bleed / 20), 14), M.dark);
+        }
+        if (P.cap > 0) {
+          b.add(cylGeo([x, P.zd - 0.45, zo], [x, P.zd + 0.05, zo], ro * 1.16, 20), M.pvc);
+          b.add(cylGeo([x, P.zd - 0.5, zo], [x, P.zd - 0.44, zo], Math.min(ro, P.cap / 20), 14), M.dark);
+        }
       }
 
-      if (skOn) {
+      if (skHere) {
         const { zj, zb } = o;
-        const fl = P.sk === 2;
-        const zTop = fl ? Math.max(zj + 1.5, rim0 - GEO.CUPD - 3.5) : rim0 - GEO.CUPD;
-        b.add(cylGeo([x, zj - 1, zi], [x, zj + 1, zi], ro * 1.14, 20), M.pvc);
-        b.add(cylGeo([x, zj, zi], [x, zj, zb], ro, 20), pm, { order: 5 });
-        b.add(cylGeo([x, zj, zb], [x, zTop, zb], ro, 20), pm, { order: 5 });
-        b.add(sphereGeo([x, zj, zb], ro * 1.22), M.pvc);
+        const fl = flI;
+        if (!skPipe) {
+          const zTop = fl ? Math.max(zj + 1.5, rim0 - GEO.CUPD - 3.5) : rim0 - GEO.CUPD;
+          b.add(cylGeo([x, zj - 1, zi], [x, zj + 1, zi], ro * 1.14, 20), M.pvc);
+          b.add(cylGeo([x, zj, zi], [x, zj, zb], ro, 20), pm, { order: 5 });
+          b.add(cylGeo([x, zj, zb], [x, zTop, zb], ro, 20), pm, { order: 5 });
+          b.add(sphereGeo([x, zj, zb], ro * 1.22), M.pvc);
+        }
 
         // mangkuk (bergerak naik-turun untuk tipe mengapung)
         const cg = new THREE.Group();
-        cg.position.set(x, rim0, zb);
+        cg.position.set(x, rimI, zb);
         sipG.add(cg);
         o.cupG = cg;
         const cm = fl ? M.clear : M.pvc2;
@@ -110,14 +130,15 @@ export function createSiphon(scene, M) {
         }
         cb.build(cg);
         o.cupW = mesh(new THREE.CylinderGeometry(2.12, 2.12, 1, 24), M.core, sipG, { order: 4 });
-        o.brW = mesh(new THREE.CylinderGeometry(ri, ri, 1, 10), M.core, sipG);
+        if (!skPipe) o.brW = mesh(new THREE.CylinderGeometry(ri, ri, 1, 10), M.core, sipG);
       }
+      const vent = skPipe ? P.vent2 : P.venturi;
 
       // tee udara di puncak U + venturi / tutup
       b.add(cylGeo([x, yc, -3.2], [x, yc, -0.8], ro * 1.14, 20), M.pvc);
       b.add(cylGeo([x, yc, -2], [x, yc + 2.2, -2], 0.4, 10), M.pvc);
-      b.add(sphereGeo([x, yc + 2.3, -2], 0.5), P.venturi ? M.green : M.red);
-      if (P.venturi) {
+      b.add(sphereGeo([x, yc + 2.3, -2], 0.5), vent ? M.green : M.red);
+      if (vent) {
         b.add(
           tubeGeo(
             [
@@ -134,18 +155,20 @@ export function createSiphon(scene, M) {
           M.air,
         );
       }
-      // ball valve di sisi filter
-      const vy = Math.min(30.4, Math.max(P.zd + 2.6, 29.2));
-      b.add(cylGeo([x, vy - 1.4, zo], [x, vy + 1.4, zo], ro * 1.65, 20), M.pvcG);
-      b.add(cylGeo([x, vy, zo], [x, vy, zo - ro * 1.65 - 0.5], 0.45, 10), M.pvcG);
-      const hg = new THREE.BoxGeometry(0.75, 3.8, 0.4);
-      hg.translate(0, 1.2, 0);
-      o.handle = mesh(hg, M.red, sipG);
-      o.handle.position.set(x, vy, zo - ro * 1.65 - 0.6);
+      // ball valve di sisi filter (pipa skimmer terpisah: hanya bila dipakai)
+      if (!skPipe || P.sv2 < 1) {
+        const vy = Math.min(30.4, Math.max(P.zd + 2.6, 29.2));
+        b.add(cylGeo([x, vy - 1.4, zo], [x, vy + 1.4, zo], ro * 1.65, 20), M.pvcG);
+        b.add(cylGeo([x, vy, zo], [x, vy, zo - ro * 1.65 - 0.5], 0.45, 10), M.pvcG);
+        const hg = new THREE.BoxGeometry(0.75, 3.8, 0.4);
+        hg.translate(0, 1.2, 0);
+        o.handle = mesh(hg, M.red, sipG);
+        o.handle.position.set(x, vy, zo - ro * 1.65 - 0.6);
+      }
 
       // isi pipa: inti air, kantong udara di puncak, pancuran bebas di ujung buang
       o.cores = [
-        mesh(cylGeo([x, zin, zi], [x, yc - R, zi], ri, 10), M.core, sipG),
+        mesh(cylGeo([x, legBot, zi], [x, yc - R, zi], ri, 10), M.core, sipG),
         mesh(cylGeo([x, yc, zi - R], [x, yc, zo + R], ri, 10), M.core, sipG),
         mesh(cylGeo([x, yc - R, zo], [x, P.zd, zo], ri, 10), M.core, sipG),
       ];
@@ -155,7 +178,7 @@ export function createSiphon(scene, M) {
       o.stream = mesh(new THREE.CylinderGeometry(ri * 0.8, ri * 0.6, 1, 12), M.stream, sipG);
       o.stream.visible = false;
       o.path = makePath([
-        [x, zin, zi],
+        [x, legBot, zi],
         [x, yc, zi],
         [x, yc, zo],
         [x, P.zd, zo],

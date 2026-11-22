@@ -49,6 +49,19 @@ export function buildControls(h) {
     { g: 2, id: 'kb', label: 'Bukaan intake bawah', min: 5, max: 100, step: 1, d: 0, unit: '%', get: () => P().kb * 100, set: (v) => (P().kb = v / 100) },
     { g: 2, id: 'zrim', label: 'Tinggi bibir surface skimmer (tipe tetap)', min: 22, max: 29.5, step: 0.1, d: 1, unit: ' cm', get: () => P().zrim, set: (v) => { P().zrim = v; markSiphon(); } },
     { g: 2, id: 'sv', label: 'Ball valve U-pipe', min: 5, max: 100, step: 1, d: 0, unit: '%', get: () => P().sv * 100, set: (v) => (P().sv = v / 100) },
+    { g: 2, id: 'fsub', label: 'Kedalaman bibir skimmer apung di bawah muka air', min: 2, max: 15, step: 1, d: 0, unit: ' mm', get: () => P().fsub, set: (v) => (P().fsub = v) },
+    {
+      g: 2, id: 'bleed', label: 'Lubang cadangan di pipa skimmer (Ø, tinggi 20 cm)', min: 0, max: 12, step: 1, d: 0, unit: ' mm',
+      show: (v) => (v === 0 ? 'tanpa' : fmt(v, 0) + ' mm'), get: () => P().bleed, set: (v) => { P().bleed = v; markSiphon(); },
+    },
+    {
+      g: 2, id: 'cap', label: 'Dop berlubang di ujung buang pipa skimmer (Ø)', min: 0, max: 16, step: 1, d: 0, unit: ' mm',
+      show: (v) => (v === 0 ? 'tanpa dop' : fmt(v, 0) + ' mm'), get: () => P().cap, set: (v) => { P().cap = v; markSiphon(); },
+    },
+    {
+      g: 2, id: 'sv2', label: 'Ball valve U skimmer', min: 5, max: 100, step: 1, d: 0, unit: '%',
+      show: (v) => (v >= 100 ? 'tanpa valve / terbuka' : fmt(v, 0) + '%'), get: () => P().sv2 * 100, set: (v) => { P().sv2 = v / 100; markSiphon(); },
+    },
     { g: 4, id: 'clog', label: 'Kapas kotor', min: 0, max: 95, step: 1, d: 0, unit: '%', get: () => P().clog * 100, set: (v) => (P().clog = v / 100) },
     { g: 3, id: 'nyaw', label: 'Arah duckbill mendatar (0° lurus ke kiri, + ke depan)', min: -90, max: 90, step: 5, d: 0, unit: '°', get: () => app.NZL.yaw, set: (v) => (app.NZL.yaw = v) },
     { g: 3, id: 'npit', label: 'Arah duckbill naik/turun (+ ke atas)', min: -60, max: 45, step: 5, d: 0, unit: '°', get: () => app.NZL.pitch, set: (v) => (app.NZL.pitch = v) },
@@ -75,6 +88,7 @@ export function buildControls(h) {
   ];
   const TG = [
     { g: 2, id: 'venturi', label: 'Selang udara ke venturi / aqualifter' },
+    { g: 2, id: 'vent2', label: 'Aqualifter / venturi di U skimmer (susunan terpisah)' },
     { g: 2, id: 'box', label: 'Overflow box (sisir 26,5 cm) sebagai surface skimmer' },
     { g: 3, id: 'cfd', view: true, label: 'Simulasi arus (CFD) di tank dan filter' },
     { g: 3, id: 'planeOn', view: true, label: 'Bidang potong tank: peta kecepatan + garis arus (animasi)' },
@@ -128,16 +142,32 @@ export function buildControls(h) {
     });
   }
 
-  selectRow(gs[2], 'Ukuran U-pipe (1 pipa)', 'pipe', [
-    ['1|1.8', 'PVC ½" × 1 (dalam 18 mm)'],
-    ['1|2.2', 'PVC ¾" × 1 (dalam 22 mm)'],
-    ['1|1.7', 'TY 20 mm × 1 (dalam 17 mm)'],
+  selectRow(gs[2], 'Susunan intake', 'layout', [
+    ['1', '1 U-pipe: intake bawah + skimmer lewat tee'],
+    ['split', '2 U-pipe terpisah: pipa bawah + pipa khusus skimmer'],
   ], (val) => {
-    const [n, D] = val.split('|');
     const p = P();
-    p.n = +n;
-    p.D = +D;
-    p.sv = p.box ? 1 : p.n === 2 ? 0.3 : defaultParams().sv;
+    p.split = val === 'split';
+    p.n = p.split ? 2 : 1;
+    if (p.split && p.sk === 0) p.sk = 2;
+    // pipa baru mulai terpancing penuh (tanpa udara)
+    for (let i = 0; i < 2; i++) {
+      S().brk[i] = false;
+      S().air[i] = 0;
+      if (i >= p.n) S().vs[i] = 0;
+    }
+    h.rebuildSiphon();
+    syncUI();
+  });
+  selectRow(gs[2], 'Ukuran U-pipe', 'pipe', [
+    ['1.8', 'PVC ½" (dalam 18 mm)'],
+    ['2.2', 'PVC ¾" (dalam 22 mm)'],
+    ['1.7', 'TY 20 mm (dalam 17 mm)'],
+  ], (val) => {
+    const p = P();
+    p.D = +val;
+    p.n = p.split ? 2 : 1;
+    if (!p.split) p.sv = p.box ? 1 : defaultParams().sv;
     for (let i = p.n; i < 2; i++) {
       S().brk[i] = false;
       S().air[i] = 0;
@@ -432,12 +462,20 @@ export function buildControls(h) {
     }
     for (const t of TG) U[t.id].chk.checked = !!(t.view ? app.V[t.id] : app.P[t.id]);
     const p = P();
-    $('pipe').value = p.n + '|' + p.D;
+    $('pipe').value = String(p.D);
+    const split = p.split && !p.box;
+    $('layout').value = split ? 'split' : '1';
+    $('layout').disabled = p.box;
     $('skt').value = String(p.sk);
     $('skt').disabled = p.box;
+    const none = $('skt').querySelector('option[value="0"]');
+    if (none) none.disabled = split; // pipa skimmer terpisah selalu punya kepala skimmer
     U.zin.inp.disabled = p.box;
     U.kb.inp.disabled = p.box;
     U.zrim.inp.disabled = p.box || p.sk !== 1;
+    U.fsub.inp.disabled = p.box || p.sk !== 2;
+    for (const k of ['bleed', 'cap', 'sv2']) U[k].inp.disabled = !split;
+    U.vent2.chk.disabled = !split;
     const b = $('bPow');
     b.textContent = p.on ? 'Listrik: nyala' : 'Listrik: mati';
     b.className = p.on ? 'on' : 'off';
@@ -523,6 +561,12 @@ export function buildControls(h) {
       'Arah duckbill dan wavemaker bisa diatur kapan saja. Pengaruhnya pada pola arus terlihat di tab Arus (bidang potong, kabut 3D, jejak) setelah ±30 detik simulasi; level dan debit hidrolik tidak berubah.',
   });
 
+  const splitNote = el('p', {
+    className: 'note',
+    textContent:
+      'Berlaku bila Susunan intake = 2 U-pipe terpisah. Pipa skimmer hanya diisi lewat bibir kepala skimmer; bila siphon menarik lebih banyak dari yang bisa masuk, kepala skimmer kering dan udara ikut tersedot ("kelaparan"). Lubang cadangan memasok kekurangan dari bawah, dop berlubang membatasi tarikan, aqualifter membuang udara di puncak U. Kecepatan di pipa harus melebihi ±0,35·√(g·D) supaya gelembung terbawa.',
+  });
+
   /* ================= tata letak: tab + grup ringkas ================= */
   const LAYOUT = [
     {
@@ -531,7 +575,8 @@ export function buildControls(h) {
       groups: [
         ['Air', ['s_vol', 's_disp']],
         ['Pompa return & auto-off', ['s_spd', 's_qmax', 's_hmax', 's_rv', 't_fswHi', 't_fswLo']],
-        ['Siphon U-pipe', ['pipe', 'skt', 's_zd', 's_zin', 's_kb', 's_zrim', 's_sv', 't_venturi', 't_box']],
+        ['Siphon U-pipe', ['layout', 'pipe', 'skt', 's_zd', 's_zin', 's_kb', 's_zrim', 's_fsub', 's_sv', 't_venturi', 't_box']],
+        ['Pipa khusus skimmer (susunan terpisah)', [splitNote, 's_bleed', 's_cap', 's_sv2', 't_vent2']],
         ['Filter & pengaman', ['s_clog', 't_hole', 't_ato']],
         ['Duckbill & wavemaker', ['s_nyaw', 's_npit', 't_wm', 's_wq', 's_wyaw', 's_wpit', 's_wy', nozzleNote]],
       ],

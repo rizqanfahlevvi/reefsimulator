@@ -33,8 +33,27 @@ export function defaultParams() {
     fswLo: true, // auto-off pompa: pelampung bawah di chamber pompa (cegah pompa kering)
     clog: 0, // kapas kotor (0..1)
     disp: 4, // batu + pasir (L)
+    // susunan "2 U-pipe terpisah": pipa 0 hanya intake bawah, pipa 1 khusus surface skimmer
+    split: false,
+    fsub: 4, // kedalaman bibir skimmer apung di bawah muka air (mm)
+    bleed: 0, // lubang cadangan di pipa skimmer, Ø mm (0 = tanpa)
+    cap: 0, // dop berlubang di ujung buang pipa skimmer, Ø mm (0 = tanpa dop)
+    vent2: false, // aqualifter/venturi di puncak U skimmer
+    sv2: 1, // ball valve U skimmer (1 = terbuka penuh / tanpa valve)
   };
 }
+
+/** Konstanta susunan 2 pipa terpisah. */
+export const SPLIT = Object.freeze({
+  /** Tinggi lubang cadangan di pipa skimmer dari dasar (cm). */
+  bleedY: 20,
+  /** Koefisien debit lubang tajam & kontraksi jet dop berlubang. */
+  cd: 0.62,
+  cc: 0.62,
+});
+
+/** Susunan 2 U-pipe terpisah aktif (tidak berlaku saat memakai overflow box). */
+export const isSplit = (P) => !!P.split && !P.box;
 
 /** Volume air total di seluruh sistem (cm³). */
 export function totalVolume(S, P) {
@@ -189,9 +208,11 @@ export function pipeLength(P) {
 const signedSqrt = (x) => (x >= 0 ? Math.sqrt(x) : -Math.sqrt(-x));
 
 /** Tinggi bibir mangkuk surface skimmer saat ini. */
-export function rimOf(S, P) {
+export function rimOf(S, P, i = 0) {
+  const cups = (P.fsub ?? 4) / 10; // bawaan 4 mm = GEO.CUPS
+  if (isSplit(P) && i === 1) return P.sk === 1 ? P.zrim : Math.max(12, Math.min(29.5, S.HT - cups));
   const zjt = P.zin + GEO.ZJ + P.D * 0.5;
-  return P.sk === 2 ? Math.max(zjt + GEO.CUPD + 1, Math.min(29.5, S.HT - GEO.CUPS)) : P.zrim;
+  return P.sk === 2 ? Math.max(zjt + GEO.CUPD + 1, Math.min(29.5, S.HT - cups)) : P.zrim;
 }
 
 /** Apakah cabang surface skimmer aktif (secara geometris mungkin). */
@@ -206,6 +227,15 @@ export function skimmerActive(P, rim) {
 function intake(S, P, i, v, As) {
   const HT = S.HT;
   const Q = v * As;
+  if (isSplit(P) && i === 0) {
+    // susunan terpisah: pipa 0 hanya intake bawah
+    S.rim[i] = rimOf(S, P, 0);
+    S.Hc[i] = HT;
+    S.qb[i] = Q;
+    S.qk[i] = 0;
+    S.airIn[i] = 0;
+    return 1.4 + valveK(P.kb);
+  }
   const C2 = 44.294; // √(2g)
   const rim = rimOf(S, P);
   S.rim[i] = rim;
@@ -283,6 +313,116 @@ function intake(S, P, i, v, As) {
   return Math.max(0.2, (HT - hj) / ((v * v) / (2 * G)));
 }
 
+/**
+ * Pipa khusus surface skimmer (susunan terpisah, tanpa intake bawah). Air masuk lewat bibir
+ * kepala skimmer (weir, kedalaman bibir P.fsub untuk tipe apung) dan lubang cadangan opsional;
+ * level di dalam kepala skimmer (Hc) dicari sehingga pasokan = tarikan siphon. Bila tarikan
+ * melebihi pasokan bahkan saat kepala skimmer kering, udara ikut tersedot → siphon bisa putus
+ * ("siphon kelaparan"). Gelembung dari air yang jatuh di bibir hanya tersapu bila kecepatan di
+ * pipa > kecepatan naik gelembung Taylor; aqualifter (P.vent2) membuang udara di puncak U.
+ * Dop berlubang di ujung buang: rugi jet K = (1/(Cc·β²))² − 1.
+ * @returns {number} debit air (cm³/s) yang benar-benar keluar dari tank lewat pipa ini
+ */
+function skimmerPipe(S, P, dt, run, As, D, vT, outSub) {
+  const HT = S.HT;
+  const rim = rimOf(S, P, 1);
+  S.rim[1] = rim;
+  const zcb = rim - GEO.CUPD; // dasar kepala skimmer = mulut pipa
+  const ab = P.bleed > 0 ? (Math.PI * (P.bleed / 10) ** 2) / 4 : 0;
+  const C2 = 44.294; // √(2g)
+  const weirQ = (Hc) => weir(HT, Hc, rim, GEO.CUPB);
+  const bleedQ = (Hc) => (ab ? SPLIT.cd * ab * C2 * signedSqrt(HT - Hc) : 0);
+  const supply = (Hc) => weirQ(Hc) + bleedQ(Hc);
+  const Lp = GEO.YC - zcb + 11 + (GEO.YC - P.zd);
+  let v = S.vs[1];
+  let air = S.air[1];
+  let Hc = Math.min(HT, Math.max(zcb, S.Hc[1]));
+  let qw = 0;
+  let qh = 0;
+  let airIn = 0; // udara tersedot (kepala skimmer kering / pusaran) → status "menghisap udara"
+  let bub = 0; // gelembung mikro yang terbawa air permukaan (normal, tidak dilaporkan)
+  if (S.brk[1]) {
+    v = 0;
+    Hc = HT > rim || ab ? HT : Hc;
+    // pancing ulang hanya lewat aqualifter di puncak U skimmer
+    if (P.vent2 && run && (HT > rim || ab) && outSub) {
+      air -= 0.05 * dt;
+      if (air <= 0.4) {
+        air = 0.4;
+        S.brk[1] = false;
+      }
+    } else air = 1;
+  } else {
+    const Q = v * As;
+    if (Q > 0.5) {
+      if (supply(zcb) < Q) {
+        Hc = zcb;
+        qw = weirQ(zcb);
+        qh = bleedQ(zcb);
+        airIn += 3 * (1 - (qw + qh) / Q);
+      } else {
+        let lo = zcb;
+        let hi = HT;
+        for (let n = 0; n < 24; n++) {
+          const m = (lo + hi) * 0.5;
+          if (supply(m) > Q) lo = m;
+          else hi = m;
+        }
+        Hc = (lo + hi) * 0.5;
+        qw = weirQ(Hc);
+        qh = bleedQ(Hc);
+      }
+      // air permukaan selalu membawa gelembung mikro & buih (ditambah gas terlarut yang keluar di
+      // puncak U bertekanan rendah); air yang jatuh dari bibir menambah gelembung
+      if (qw > 0.5) bub += 0.02 * Math.min(1, qw / Q);
+      if (qw > 0.5 && Hc < rim - 0.3) bub += 0.05 * Math.min(1, qw / Q) * Math.min(1, (rim - Hc) / 2);
+      // pusaran di mulut pipa bila genangan di kepala skimmer dangkal
+      const Sc = 0.3 + (1.5 * v * v) / (2 * G);
+      const depth = Hc - zcb;
+      if (depth < Sc) airIn += 0.5 * (1 - depth / Sc);
+    } else if (HT > rim || ab) Hc = HT;
+    let Kc = 0;
+    if (P.cap > 0) {
+      const b2 = Math.min(1, (P.cap / 10 / D) ** 2);
+      Kc = Math.max(0, (1 / (SPLIT.cc * b2)) ** 2 - 1);
+    }
+    const dh = Hc - Math.max(P.zd, S.H1);
+    const K =
+      1.4 + 3.1 + valveK(P.sv2) + Kc + (friction((Math.abs(v) * D) / NU) * Lp) / D + 4 * (1 / Math.pow(1 - Math.min(air, 0.96), 2) - 1);
+    v = (v + (dt * G * dh) / Lp) / (1 + (dt * K * Math.abs(v)) / (2 * Lp));
+    if (v > 0 && supply(zcb) < 0.5) v *= Math.max(0, 1 - 5 * dt); // tidak ada air yang bisa masuk
+    if (v < 0 && !outSub) v = 0;
+    let da = airIn + bub;
+    const av = Math.abs(v);
+    if (!outSub) {
+      if (dh <= 0) da += 2;
+      else {
+        const vsl = av / Math.max(P.sv2, 0.03);
+        if (vsl < vT) da += 0.15 * (1 - vsl / vT);
+      }
+    }
+    if (av > vT) da -= 0.2 * (av / vT - 1);
+    if (P.vent2 && run) da -= 0.05;
+    air = Math.min(1, Math.max(0, air + da * dt));
+    if (air >= 0.97) {
+      S.brk[1] = true;
+      air = 1;
+      v = 0;
+    }
+  }
+  S.vs[1] = v;
+  S.air[1] = air;
+  S.Hc[1] = Hc;
+  S.airIn[1] = airIn;
+  // air yang benar-benar mengalir: saat kepala skimmer kering dibatasi pasokan (sisanya udara)
+  const Qa = v * As;
+  const Qw = v <= 0 ? Qa : Math.min(Qa, supply(zcb));
+  const tot = qw + qh;
+  S.qk[1] = tot > 0 ? (Qw * qw) / tot : v <= 0 ? Qw : 0;
+  S.qb[1] = tot > 0 ? (Qw * qh) / tot : 0;
+  return Qw;
+}
+
 /** Satu langkah integrasi (dt detik). Memutasi S. */
 export function step(S, P, dt) {
   // auto-off pompa: dua saklar pelampung independen, masing-masing dengan histeresis
@@ -316,6 +456,12 @@ export function step(S, P, dt) {
       S.vs[i] = 0;
       S.qb[i] = 0;
       S.qk[i] = 0;
+      continue;
+    }
+    if (i === 1 && isSplit(P)) {
+      Qs += skimmerPipe(S, P, dt, run, As, D, vT, outSub);
+      Qk += S.qk[1];
+      Qb += S.qb[1];
       continue;
     }
     let v = S.vs[i];

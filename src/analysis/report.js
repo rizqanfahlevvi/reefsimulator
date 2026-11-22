@@ -2,7 +2,7 @@
  * Laporan analisis (Markdown + lampiran JSON) untuk dianalisis lebih lanjut di Claude Project,
  * dan template instruksi Project. Fungsi murni: semua data masuk lewat argumen.
  */
-import { equilibriumLevel, skimmerActive, rimOf, totalVolume } from '../physics/hydraulics.js';
+import { equilibriumLevel, skimmerActive, rimOf, totalVolume, isSplit } from '../physics/hydraulics.js';
 import { GEO, FSW } from '../physics/constants.js';
 import { REFERENCES, REF_INDEX, EVIDENCE, refLink } from './references.js';
 import { CATEGORIES, LEVEL_LABEL } from './advisor.js';
@@ -74,7 +74,14 @@ export function buildReport(c) {
         ['Pompa return', `Qmax ${P.qmax} L/jam · Hmax ${n(P.hmax, 1)} m · daya ${pct(P.spd)} · ball valve return ${pct(P.rv)}`],
         ['Pipa return', P.retLine ? `desain rakit pipa "${P.retLine.name || '-'}" · Ø dalam acuan ${n(P.retLine.D * 10, 1)} mm · ujung keluar ${n(P.retLine.zout, 1)} cm (lihat bagian 13)` : 'bawaan model (Ø dalam 12 mm, panjang ekuivalen 1,1 m)'],
         ['U-pipe siphon', `${P.n} pipa · Ø dalam ${n(P.D * 10, 0)} mm · ball valve ${pct(P.sv)} · ujung buang ${n(P.zd)} cm · venturi ${yes(P.venturi)}`],
-        ['Intake', P.box ? 'overflow box (sisir 26,5 cm)' : `bawah ${n(P.zin)} cm (bukaan ${pct(P.kb)}) + ${SKIM[P.sk]}${P.sk === 1 ? ' (bibir ' + n(P.zrim) + ' cm)' : ''}`],
+        [
+          'Intake',
+          P.box
+            ? 'overflow box (sisir 26,5 cm)'
+            : isSplit(P)
+              ? `2 U-pipe terpisah: pipa bawah ${n(P.zin)} cm (bukaan ${pct(P.kb)}) + pipa khusus ${SKIM[P.sk]}${P.sk === 2 ? ` (bibir ${P.fsub} mm di bawah muka air)` : ` (bibir ${n(P.zrim)} cm)`} · lubang cadangan ${P.bleed ? P.bleed + ' mm' : 'tidak'} · dop ujung buang ${P.cap ? P.cap + ' mm' : 'tidak'} · valve U skimmer ${P.sv2 >= 1 ? 'tidak/terbuka' : pct(P.sv2)} · aqualifter U skimmer ${yes(P.vent2)}`
+              : `bawah ${n(P.zin)} cm (bukaan ${pct(P.kb)}) + ${SKIM[P.sk]}${P.sk === 1 ? ' (bibir ' + n(P.zrim) + ' cm)' : ''}`,
+        ],
         ['Pengaman', `pelampung atas ${yes(P.fswHi)} (${n(FSW.HI_OFF)} cm) · pelampung bawah ${yes(P.fswLo)} (${FSW.LO_OFF} cm) · lubang siphon-break ${yes(P.hole)} · ATO ${yes(P.ato)}`],
         ['Kapas', 'kotor ' + pct(P.clog)],
         ['Duckbill', `mendatar ${NZL.yaw}° (0 = ke kiri, + ke depan) · naik/turun ${NZL.pitch}°`],

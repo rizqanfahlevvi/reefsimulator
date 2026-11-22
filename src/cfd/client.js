@@ -3,7 +3,7 @@
  * menyimpan medan kecepatan terakhir dan menyediakan sampling untuk jejak partikel.
  */
 import { G } from '../physics/constants.js';
-import { totalVolume } from '../physics/hydraulics.js';
+import { totalVolume, isSplit, SPLIT } from '../physics/hydraulics.js';
 import { T3, F3, cellIndex, trilinear } from './grid.js';
 import { ROCKS, NOZZLE, WAVEMAKER, FILTER, dirOf, siphonX } from '../layout.js';
 
@@ -432,11 +432,14 @@ export class FlowClient {
         for (let i = 0; i < P.n; i++) {
           if (S.brk[i]) continue;
           const x = siphonX(P.n, i);
-          if (S.qb[i] > 0.2) sinks.push([x, P.zin + 0.8, 3.5, S.qb[i]]);
+          // susunan terpisah: pipa 1 = kepala skimmer langsung di kaki tank (z 3,5), "bawah" = lubang cadangan
+          const skPipe = isSplit(P) && i === 1;
+          if (S.qb[i] > 0.2) sinks.push([x, skPipe ? SPLIT.bleedY : P.zin + 0.8, skPipe ? 4.6 : 3.5, S.qb[i]]);
           if (S.qk[i] > 0.2) {
             const k = S.qk[i] / 3;
             const y = S.HT - 0.5;
-            sinks.push([x - 1.7, y, 6.9, k], [x + 1.7, y, 6.9, k], [x, y, 8.7, k]);
+            const zc = skPipe ? 3.5 : 7.1;
+            sinks.push([x - 1.7, y, zc - 0.2, k], [x + 1.7, y, zc - 0.2, k], [x, y, zc + 1.6, k]);
           }
         }
       }
