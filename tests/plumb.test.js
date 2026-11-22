@@ -199,3 +199,136 @@ describe('geometri', () => {
     }
   });
 });
+
+/* ===================== fase 2: tabrakan & templat ===================== */
+import { collisions, segmentDistance, capsuleBoxDepth, OBSTACLES } from '../src/plumb/collide.js';
+import { TEMPLATES, buildTemplate, rollToward, addSiphon, addReturn } from '../src/plumb/templates.js';
+import { analyzeLine } from '../src/plumb/hydro.js';
+import * as THREE from 'three';
+
+describe('tabrakan', () => {
+  const V = (a) => new THREE.Vector3(...a);
+  it('jarak ruas–ruas & kapsul–kotak', () => {
+    expect(segmentDistance(V([0, 0, 0]), V([10, 0, 0]), V([5, 3, -5]), V([5, 3, 5]))).toBeCloseTo(3, 9);
+    expect(segmentDistance(V([0, 0, 0]), V([10, 0, 0]), V([12, 0, 0]), V([20, 0, 0]))).toBeCloseTo(2, 9);
+    const glass = [0, 500, 0, 300, 0, 5];
+    expect(capsuleBoxDepth({ a: V([100, 100, 30]), b: V([200, 100, 30]), r: 11 }, glass)).toBeLessThanOrEqual(0); // 25 mm dari kaca
+    expect(capsuleBoxDepth({ a: V([100, 100, -50]), b: V([100, 100, 50]), r: 11 }, glass)).toBeGreaterThan(10); // menembus
+  });
+
+  it('pipa menembus kaca terdeteksi; bulkhead di kaca diizinkan', () => {
+    const d = newDesign();
+    // pipa mendatar dari dalam tank menembus kaca belakang ke filter
+    const p = addRoot(d, { type: 'pipe', size: 'i12', cls: 'AW', len: 200, anchor: { p: [250, 150, 100], dir: '-z' } });
+    const c = collisions(d);
+    expect(c.parts.has(p)).toBe(true);
+    expect(c.hits.some((h) => h.what === 'kaca belakang tank')).toBe(true);
+    // bulkhead tepat di kaca belakang tank (z = 2,5 mm)
+    const d2 = newDesign();
+    const b = addRoot(d2, { type: 'bulkhead', size: 'i12', cls: 'AW', anchor: { p: [250, 150, 2.5 + 13.7], dir: '-z' } });
+    expect(collisions(d2).parts.has(b)).toBe(false);
+  });
+
+  it('bagian bertetangga tidak dianggap menabrak; dua rangkaian bersilangan terdeteksi', () => {
+    const d = newDesign();
+    const p0 = addRoot(d, { type: 'pipe', size: 'i12', cls: 'AW', len: 200, anchor: { p: [250, 400, 100], dir: 'up' } });
+    const e = addPart(d, p0, 1, { type: 'elbow90', slot: 'a' });
+    addPart(d, e, 1, { type: 'pipe', slot: 'a', len: 200 });
+    expect(collisions(d).hits).toEqual([]);
+    const x = addRoot(d, { type: 'pipe', size: 'i12', cls: 'AW', len: 300, anchor: { p: [100, 500, 100], dir: '+x' } });
+    const c = collisions(d);
+    expect(c.parts.has(x)).toBe(true);
+    expect(c.parts.has(p0)).toBe(true);
+  });
+
+  it('penghalang memakai kotak yang sama dengan scene (tank 50×25×30, filter z −13..−2)', () => {
+    const front = OBSTACLES.find((o) => o.name === 'kaca depan tank').b;
+    expect(front).toEqual([0, 50, 0, 30, 24.5, 25]);
+  });
+});
+
+describe('templat', () => {
+  it('rollToward mengarahkan knee', () => {
+    const d = newDesign();
+    const p = addRoot(d, { type: 'pipe', size: 'i12', cls: 'AW', len: 100, anchor: { p: [0, 0, 0], dir: 'up' } });
+    const e = addPart(d, p, 1, { type: 'elbow90', slot: 'a' });
+    for (const want of [[1, 0, 0], [0, 0, -1], [-1, 0, 0], [0, 0, 1]]) expect(rollToward(d, e, want)).toBeCloseTo(1, 6);
+  });
+
+  it('U-pipe siphon: intake, puncak, dan ujung buang sesuai siphon di simulasi', () => {
+    for (const size of ['i12', 'i34', 'm20', 'm25']) {
+      const d = newDesign();
+      const root = addSiphon(d, { size, cls: 'AW' });
+      const fr = frames(d);
+      const free = freePorts(d, fr);
+      expect(free.length).toBe(2);
+      const start = free.find((f) => f.pid === root);
+      near(start.p, [50, 80, 35]);
+      const end = free.find((f) => f.pid !== root);
+      near(end.p, [50, 220, -75]);
+      expect(end.d.y).toBeCloseTo(-1, 6);
+      // titik tertinggi garis tengah = 34 cm (knee atas)
+      const top = Math.max(...d.parts.filter((p) => p.type === 'elbow90').map((p) => fr.get(p.id).m.elements[13]));
+      expect(top).toBeCloseTo(340, 6);
+      expect(d.parts.some((p) => p.type === 'ballvalve')).toBe(true);
+      expect(collisions(d, fr).hits).toEqual([]);
+    }
+  });
+
+  it('return pompa: dari keluaran pompa ke duckbill, union + ball valve, tanpa tabrakan, siap dihitung', () => {
+    for (const size of ['i12', 'i34']) {
+      const d = newDesign();
+      addReturn(d, { size, cls: 'AW' });
+      const fr = frames(d);
+      const free = freePorts(d, fr);
+      expect(free.length).toBe(2);
+      expect(collisions(d, fr).hits).toEqual([]);
+      const types = d.parts.map((p) => p.type);
+      expect(types.filter((t) => t === 'union').length).toBe(1);
+      expect(types.filter((t) => t === 'ballvalve').length).toBe(1);
+      // valve di atas muka air chamber pompa (±18 cm)
+      const vy = fr.get(d.parts.find((p) => p.type === 'ballvalve').id).m.elements[13];
+      expect(vy).toBeGreaterThan(200);
+      const r = analyzeLine(d, {});
+      expect(r.ok).toBe(true);
+      expect(r.zout).toBeCloseTo(26.4, 6);
+      expect(r.warnings).toEqual([]);
+      expect(r.elems.filter((e) => e.kind === 'elbow90').length).toBe(2);
+      expect(r.elems.some((e) => e.valve)).toBe(true);
+    }
+  });
+
+  it('semua templat bisa dirakit untuk seri Indonesia & metrik', () => {
+    for (const t of TEMPLATES)
+      for (const series of ['in', 'm']) {
+        const d = newDesign();
+        buildTemplate(d, t, { series, cls: 'AW' });
+        expect(d.parts.length).toBeGreaterThan(4);
+        expect(validateDesign(JSON.parse(JSON.stringify(d))).dropped).toBe(0);
+      }
+  });
+});
+
+describe('hidrolik × templat', () => {
+  it('siphon saja: tidak ada ujung di keluaran pompa → tidak dianggap jalur return; ujung manual tetap bisa', () => {
+    const d = newDesign();
+    const root = addSiphon(d, { size: 'i12', cls: 'AW' });
+    const r = analyzeLine(d, {});
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain('keluaran pompa');
+    const m = analyzeLine(d, { inlet: { pid: root, port: 0 } });
+    expect(m.ok).toBe(true);
+    expect(m.warnings.some((w) => w.includes('keluaran pompa'))).toBe(true);
+    expect(m.warnings.some((w) => w.includes('tank utama'))).toBe(true);
+  });
+  it('siphon + return dalam satu desain: jalur bawaan = return', () => {
+    const d = newDesign();
+    addSiphon(d, { size: 'i12', cls: 'AW' });
+    const ret = addReturn(d, { size: 'i12', cls: 'AW' });
+    const r = analyzeLine(d, {});
+    expect(r.ok).toBe(true);
+    expect(r.inlet.pid).toBe(ret);
+    expect(r.zout).toBeCloseTo(26.4, 6);
+    expect(collisions(d).hits).toEqual([]);
+  });
+});

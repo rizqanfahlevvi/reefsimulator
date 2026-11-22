@@ -127,9 +127,58 @@ export function limitFlow(q, hu, hd, Au, Ad, dt, c) {
   return Math.max(-m, Math.min(m, q));
 }
 
-/** Koefisien rugi total jalur return. */
+/**
+ * Koefisien rugi total jalur return, diacu ke kecepatan v di penampang acuan.
+ *
+ * Tanpa desain pipa (P.retLine kosong): model bawaan v1 yang sudah dikalibrasi.
+ * Dengan desain (rakit pipa → "pakai di simulasi"): jumlah rugi tiap ruas, masing-masing di
+ * kecepatannya sendiri lalu diacu ke penampang acuan, K_eq = Σ K_i·(A_ref/A_i)². Gesek pipa
+ * Darcy–Weisbach (faktor gesek dari Re tiap ruas); fitting berupa K tetap (metode Crane
+ * K = f_T·L/D, dihitung di plumb/hydro.js); ball valve yang ditandai mengikuti bukaan P.rv.
+ */
 export function returnK(P, v) {
-  return 3.0 + valveK(P.rv) + (friction((Math.abs(v) * GEO.DR) / NU) * GEO.LR) / GEO.DR;
+  const L = P.retLine;
+  if (!L) return 3.0 + valveK(P.rv) + (friction((Math.abs(v) * GEO.DR) / NU) * GEO.LR) / GEO.DR;
+  let K = 0;
+  const av = Math.abs(v);
+  for (const s of L.segs) {
+    const r = L.A / s.A; // v_i = v·A_ref/A_i
+    let k = s.K;
+    if (s.valve) k += valveK(P.rv);
+    if (s.L > 0) k += (friction((av * r * s.D) / NU) * s.L) / s.D;
+    K += k * r * r;
+  }
+  return K;
+}
+
+/** Luas penampang acuan jalur return (cm²). */
+export const returnArea = (P) => (P.retLine ? P.retLine.A : (Math.PI * GEO.DR * GEO.DR) / 4);
+/** Panjang inersia jalur return (cm), diacu ke penampang acuan. */
+export const returnLength = (P) => (P.retLine ? P.retLine.L : GEO.LR);
+/** Tinggi ujung keluar return (cm). */
+export const returnZout = (P) => (P.retLine ? P.retLine.zout : GEO.ZOUT);
+
+/**
+ * Titik kerja tunak pompa pada jalur return untuk beda statis hs (cm): head pompa =
+ * hs + K_eq(v)·v²/2g. Pompa dianggap terendam (tanpa faktor kering).
+ * @returns {{v: number, Q: number, head: number, H0: number}} v cm/s di penampang acuan, Q cm³/s
+ */
+export function pumpOperatingPoint(P, hs) {
+  const A = returnArea(P);
+  const H0 = P.hmax * 100 * P.spd * P.spd;
+  const qm = P.qmax / 3.6;
+  const cp = (P.hmax * 100 * A * A) / (qm * qm);
+  const f = (v) => H0 - cp * v * v - hs - (returnK(P, v) * v * v) / (2 * G);
+  if (!P.on || H0 <= hs || f(0) <= 0) return { v: 0, Q: 0, head: Math.max(0, H0), H0 };
+  let lo = 0;
+  let hi = Math.sqrt(H0 / cp);
+  for (let n = 0; n < 60; n++) {
+    const m = (lo + hi) / 2;
+    if (f(m) > 0) lo = m;
+    else hi = m;
+  }
+  const v = (lo + hi) / 2;
+  return { v, Q: v * A, head: H0 - cp * v * v, H0 };
 }
 
 /** Panjang pipa U (cm). */
@@ -326,8 +375,10 @@ export function step(S, P, dt) {
     Qb += S.qb[i];
   }
 
-  /* --- pompa + jalur return --- */
-  const Ar = (Math.PI * GEO.DR * GEO.DR) / 4;
+  /* --- pompa + jalur return (pipa bawaan, atau desain rakit pipa bila dipakai) --- */
+  const Ar = returnArea(P);
+  const LR = returnLength(P);
+  const zout = returnZout(P);
   let v = S.vr;
   let hp = 0;
   let hs = 0;
@@ -338,15 +389,16 @@ export function step(S, P, dt) {
     const H0 = P.hmax * 100 * P.spd * P.spd * dry; // hukum afinitas
     const qm = P.qmax / 3.6;
     const cp = (P.hmax * 100 * Ar * Ar) / (qm * qm);
-    hs = Math.max(S.HT, GEO.ZOUT) - S.HP;
-    v = (v + (dt * G * (H0 - hs)) / GEO.LR) / (1 + (dt * (G * cp + Kr / 2) * Math.abs(v)) / GEO.LR);
+    hs = Math.max(S.HT, zout) - S.HP;
+    v = (v + (dt * G * (H0 - hs)) / LR) / (1 + (dt * (G * cp + Kr / 2) * Math.abs(v)) / LR);
     if (v < 0 || S.HP <= 1) v = 0;
     hp = Math.max(0, H0 - cp * v * v);
   } else {
     // listrik padam: aliran balik lewat pompa sampai lubang siphon-break / outlet terbuka
-    const zstop = P.hole ? GEO.ZHOLE : GEO.ZOUT;
+    // (udara masuk lewat bukaan tertinggi yang terlewati muka air)
+    const zstop = P.hole ? Math.max(GEO.ZHOLE, zout) : zout;
     if (S.retP && S.HT > zstop && S.HT > S.HP) {
-      v = (v - (dt * G * (S.HT - S.HP)) / GEO.LR) / (1 + (dt * (Kr + 6) * Math.abs(v)) / (2 * GEO.LR));
+      v = (v - (dt * G * (S.HT - S.HP)) / LR) / (1 + (dt * (Kr + 6) * Math.abs(v)) / (2 * LR));
     } else {
       if (S.HT <= zstop) S.retP = false;
       v = 0;

@@ -72,6 +72,7 @@ export function buildReport(c) {
         ['Tank / filter (P×L×T)', '50×25×30 cm / 50×11×30 cm, dasar sama; filter: kapas → skimmer → bio → pompa'],
         ['Volume air bersih', n(litres, 1) + ' L (batu & pasir ' + n(P.disp, 1) + ' L)'],
         ['Pompa return', `Qmax ${P.qmax} L/jam · Hmax ${n(P.hmax, 1)} m · daya ${pct(P.spd)} · ball valve return ${pct(P.rv)}`],
+        ['Pipa return', P.retLine ? `desain rakit pipa "${P.retLine.name || '-'}" · Ø dalam acuan ${n(P.retLine.D * 10, 1)} mm · ujung keluar ${n(P.retLine.zout, 1)} cm (lihat bagian 13)` : 'bawaan model (Ø dalam 12 mm, panjang ekuivalen 1,1 m)'],
         ['U-pipe siphon', `${P.n} pipa · Ø dalam ${n(P.D * 10, 0)} mm · ball valve ${pct(P.sv)} · ujung buang ${n(P.zd)} cm · venturi ${yes(P.venturi)}`],
         ['Intake', P.box ? 'overflow box (sisir 26,5 cm)' : `bawah ${n(P.zin)} cm (bukaan ${pct(P.kb)}) + ${SKIM[P.sk]}${P.sk === 1 ? ' (bibir ' + n(P.zrim) + ' cm)' : ''}`],
         ['Pengaman', `pelampung atas ${yes(P.fswHi)} (${n(FSW.HI_OFF)} cm) · pelampung bawah ${yes(P.fswLo)} (${FSW.LO_OFF} cm) · lubang siphon-break ${yes(P.hole)} · ATO ${yes(P.ato)}`],
@@ -232,7 +233,13 @@ export function buildReport(c) {
   /* desain rakit pipa (bila ada) */
   if (c.plumbing) {
     h(`## 13. Desain pipa: ${c.plumbing.name}`);
-    L.push(`Dirakit di mode "Rakit pipa" (${c.plumbing.parts} bagian). Dimensi seri Indonesia adalah perkiraan; sambungan ke model hidrolik menyusul (fase 3).`, '');
+    L.push(
+      `Dirakit di mode "Rakit pipa" (${c.plumbing.parts} bagian). Dimensi seri Indonesia adalah perkiraan. ` +
+        (c.plumbing.usedInSim
+          ? 'Jalur return desain ini DIPAKAI di simulasi: debit, head pompa, dan inersia kolom air mengikuti desain (rugi fitting metode Crane K = f_T·L/D, gesek pipa Darcy–Weisbach).'
+          : 'Desain ini TIDAK dipakai di simulasi (simulasi memakai pipa return bawaan); angka hidrolik di bawah adalah perkiraan bila dipakai.'),
+      '',
+    );
     L.push(c.plumbing.markdown.replace(/^### .*\n\n/, ''));
   }
 

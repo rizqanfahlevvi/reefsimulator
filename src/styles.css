@@ -1256,3 +1256,94 @@ body.plumb-mode #charts {
   background: #e0a400;
   border-color: #fff;
 }
+
+/* rakit pipa fase 2/3: label 3D (ukur, kecepatan), ujung masuk/keluar, alat & hidrolik */
+.plabel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(20, 24, 30, 0.82);
+  color: #fff;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  translate: -50% -50%;
+}
+.plabel[hidden] {
+  display: none;
+}
+.plabel-m {
+  background: #e0a400;
+  color: #1d1a10;
+  font-weight: 700;
+  font-size: 12px;
+}
+.plabel-hi {
+  background: #c2392e;
+}
+.pport[data-role='in']::before,
+.pport[data-role='out']::before {
+  font-size: 11px;
+}
+.pport[data-role='in']::before {
+  content: 'M';
+  background: rgba(42, 120, 214, 0.95);
+}
+.pport[data-role='out']::before {
+  content: 'K';
+  background: rgba(235, 104, 52, 0.95);
+}
+.pport.sel[data-role]::before {
+  background: #e0a400;
+}
+.pl-sub {
+  margin: 12px 0 4px;
+  font-size: 13px;
+}
+.pl-meas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 6px 0;
+  font-variant-numeric: tabular-nums;
+}
+.pl-meas b {
+  font-size: 18px;
+}
+.pl-meas span {
+  font-size: 12px;
+  color: var(--mut, #667);
+}
+.pl-meas .ax-x {
+  color: #d8433a;
+}
+.pl-meas .ax-y {
+  color: #2f9e44;
+}
+.pl-meas .ax-z {
+  color: #2a78d6;
+}
+.pl-ok {
+  color: #1b7f5a;
+}
+.pl-hits {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pl-hit {
+  text-align: left;
+  font-size: 12px;
+  border-color: #d8433a;
+}
+.pl-use {
+  margin-top: 6px;
+  font-weight: 600;
+}
+.pl-live {
+  font-variant-numeric: tabular-nums;
+}

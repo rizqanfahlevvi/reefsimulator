@@ -1,7 +1,7 @@
 /** Grafik canvas 2D: level air, debit, kurva pompa vs kurva sistem. */
 import { app } from '../state.js';
-import { G, GEO } from '../physics/constants.js';
-import { returnK } from '../physics/hydraulics.js';
+import { G } from '../physics/constants.js';
+import { returnK, returnArea, returnZout } from '../physics/hydraulics.js';
 import { $ } from '../util/format.js';
 
 function prep(cv) {
@@ -133,7 +133,8 @@ export function drawCharts() {
     const ax = axes(c, 0, hM, '0 L/jam', Math.round(qM) + ' L/jam', 4);
     const N = 40;
     const X = (i) => ax.L + (i / N) * (c.w - ax.L - ax.R);
-    const Ar = (Math.PI * GEO.DR * GEO.DR) / 4;
+    const Ar = returnArea(P);
+    const zout = returnZout(P);
     const full = [];
     const cur = [];
     const sys = [];
@@ -143,7 +144,7 @@ export function drawCharts() {
       full.push(Math.max(0, P.hmax * 100 * (1 - r * r)));
       cur.push(Math.max(0, P.hmax * 100 * (P.spd * P.spd - r * r)));
       const v = Q / 3.6 / Ar;
-      sys.push(Math.min(hM, Math.max(0, Math.max(S.HT, GEO.ZOUT) - S.HP) + (returnK(P, v) * v * v) / (2 * G)));
+      sys.push(Math.min(hM, Math.max(0, Math.max(S.HT, zout) - S.HP) + (returnK(P, v) * v * v) / (2 * G)));
     }
     line(c, ax, full, '#9bbfe8', [3, 3], X);
     line(c, ax, cur, '#2a78d6', null, X);

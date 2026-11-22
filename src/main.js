@@ -15,7 +15,8 @@ import { buildDiagnostics } from './ui/diagnostics.js';
 import { buildAnalysis } from './ui/analysis.js';
 import { buildClock } from './ui/clock.js';
 import { buildInspector } from './ui/inspector.js';
-import { plumbingSummary } from './ui/plumbpanel.js';
+import { plumbingSummary, storedRetLine } from './plumb/store.js';
+import { applyRetLine } from './plumb/hydro.js';
 import { toast } from './ui/toast.js';
 import { diag, logEvent, errorText, installGlobalHandlers } from './diag.js';
 import { $ } from './util/format.js';
@@ -37,6 +38,11 @@ let world = null;
       app.volS = vol;
     }
   }
+}
+/* rakit pipa fase 3: jalur return dari desain, bila dipilih "pakai sebagai pipa return di simulasi" */
+{
+  const line = storedRetLine();
+  if (line) applyRetLine(app.P, app.S, line);
 }
 
 const flow = new FlowClient(app, {
@@ -175,7 +181,7 @@ for (const id of ['panel', 'vbtn']) {
     if (b) logEvent('klik', b.textContent.trim().slice(0, 50));
   });
 }
-logEvent('info', `Halaman dimuat · CFD ${flow.mode} · 3D ${world ? 'ok' : 'gagal'}`);
+logEvent('info', `Halaman dimuat · CFD ${flow.mode} · 3D ${world ? 'ok' : 'gagal'} · pipa return ${app.P.retLine ? 'desain' : 'bawaan'}`);
 
 /* jam simulasi di tampilan 3D; ketuk = ganti kecepatan simulasi */
 const clock = buildClock({
@@ -198,7 +204,12 @@ async function enterPlumb() {
   if (!plumb) {
     const [{ createPlumbEditor }, { buildPlumbPanel }] = await Promise.all([import('./plumb/editor.js'), import('./ui/plumbpanel.js')]);
     let panel = null;
-    const editor = createPlumbEditor({ world, onPickPart: (id) => panel?.pickPart(id), onPickPort: (pid, port) => panel?.pickPort(pid, port) });
+    const editor = createPlumbEditor({
+      world,
+      onPickPart: (id) => panel?.pickPart(id),
+      onPickPort: (pid, port) => panel?.pickPort(pid, port),
+      onPickPoint: (pt) => panel?.pickPoint(pt),
+    });
     panel = buildPlumbPanel($('plumbPanel'), { editor, onExit: exitPlumb });
     plumb = { editor, panel };
   }
@@ -238,7 +249,7 @@ const analysisUI = buildAnalysis(ui.sections.analisis, {
   },
   notify: hooks.notify,
   setBadge: (n, level) => ui.setTabBadge('analisis', n, level),
-  getPlumbing: () => plumbingSummary(),
+  getPlumbing: () => plumbingSummary(app),
   showDye: () => ui.showQuantity('dye'),
 });
 
@@ -432,6 +443,7 @@ function frame(now) {
       world.render();
       inspector?.frame(real);
       plumb?.editor.frame(now / 1000);
+      if (app.mode === 'plumb') plumb?.panel.tick();
     });
   }
   // timer UI memakai waktu nyata (bukan dt yang dibatasi) supaya tetap responsif di perangkat lambat

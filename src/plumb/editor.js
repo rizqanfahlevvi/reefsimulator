@@ -2,20 +2,24 @@
  * Integrasi rakit pipa ke tampilan 3D: membangun mesh tiap bagian dari model (mm → cm),
  * sorotan bagian terpilih, penanda ujung bebas (HTML), pemilihan dengan ketukan, grid lantai,
  * dan sembunyikan/tampilkan tank acuan (lewat layer kamera, tidak mengubah visibilitas benda lain).
+ * Fase 2/3: bagian yang menabrak diwarnai merah, garis ukur 3D + label, label kecepatan di pipa,
+ * dan tanda ujung masuk (pompa) / keluar untuk perhitungan hidrolik.
  */
 import * as THREE from 'three';
 import { frames, freePorts } from './model.js';
 import { partGeometry } from './geometry.js';
 import { COLORS, SIZES, END_LABEL } from './catalog.js';
 import { createHotHighlight } from '../render/hotspots.js';
+import { rayObstacle } from './collide.js';
 import { el, $ } from '../util/format.js';
 
 const LAYER = 1; // tetap terlihat saat tank acuan disembunyikan
+const sameEnd = (a, b) => !!a && !!b && a.pid === b.pid && a.port === b.port;
 
 /**
- * @param {{world: any, onPickPart: (id:number|null) => void, onPickPort: (pid:number, port:number) => void}} ctx
+ * @param {{world: any, onPickPart: (id:number|null) => void, onPickPort: (pid:number, port:number) => void, onPickPoint?: (pt: {p: number[], label: string}) => void}} ctx
  */
-export function createPlumbEditor({ world, onPickPart, onPickPort }) {
+export function createPlumbEditor({ world, onPickPart, onPickPort, onPickPoint }) {
   const { scene, camera } = world;
   const canvas = world.renderer.domElement;
   world.enableRefLayer();
@@ -48,6 +52,9 @@ export function createPlumbEditor({ world, onPickPart, onPickPort }) {
   const nut = new THREE.MeshStandardMaterial({ color: 0x3c4146, roughness: 0.5, metalness: 0, envMap: world.ctx.envTex, envMapIntensity: 0.4 });
   const handle = new THREE.MeshStandardMaterial({ color: 0xd23a35, roughness: 0.45, metalness: 0, envMap: world.ctx.envTex, envMapIntensity: 0.5 });
   const matFor = (color, key) => (key === 'nut' ? nut : key === 'handle' ? handle : mats[color]?.[key] || mats.abu[key]);
+  // bagian yang menabrak kaca/bagian lain
+  const hitMat = new THREE.MeshStandardMaterial({ color: 0xd83b30, roughness: 0.5, metalness: 0, emissive: 0x5a0d08, transparent: true, opacity: 0.85 });
+  let hitSet = new Set();
 
   /* geometri di-cache per bentuk (jenis+ukuran+panjang), dibuang bila tidak dipakai lagi */
   const cache = new Map();
@@ -78,7 +85,8 @@ export function createPlumbEditor({ world, onPickPart, onPickPort }) {
       g.matrix.copy(f.m);
       g.userData.pid = p.id;
       for (const { geo, mat } of cache.get(k)) {
-        const m = new THREE.Mesh(geo, matFor(p.color, mat));
+        const m = new THREE.Mesh(geo, hitSet.has(p.id) ? hitMat : matFor(p.color, mat));
+        m.userData.mat = matFor(p.color, mat);
         m.castShadow = !COLORS[p.color]?.clear;
         m.layers.enable(LAYER);
         m.renderOrder = COLORS[p.color]?.clear ? 6 : 0;
@@ -133,6 +141,7 @@ export function createPlumbEditor({ world, onPickPart, onPickPort }) {
         m.el.ariaLabel = 'Sambung ke ' + m.el.title;
         m.el.classList.toggle('sel', !!selPort && selPort.pid === m.port.pid && selPort.port === m.port.port);
         m.el.dataset.end = m.port.end;
+        m.el.dataset.role = roleOf(m.port);
       }
     });
   }
@@ -185,8 +194,83 @@ export function createPlumbEditor({ world, onPickPart, onPickPort }) {
         }
       }
     }
+    if (best == null && measuring && onPickPoint) {
+      // alat ukur: titik di kaca/meja bila tidak mengenai bagian
+      const o = rayObstacle(ray.ray);
+      if (o) return onPickPoint({ p: [o.p.x * 10, o.p.y * 10, o.p.z * 10], label: o.name });
+    }
     onPickPart(best);
   });
+
+  /* ---------- garis ukur (cm, langsung di scene) ---------- */
+  let measuring = false;
+  const mg = new THREE.Group();
+  mg.visible = false;
+  scene.add(mg);
+  const onTop = (o) => {
+    o.renderOrder = 30;
+    o.layers.enable(LAYER);
+    return o;
+  };
+  const lineMat = new THREE.LineDashedMaterial({ color: 0xe0a400, dashSize: 0.8, gapSize: 0.45, depthTest: false, transparent: true });
+  const legMats = [0xd8433a, 0x2f9e44, 0x2a78d6].map((c) => new THREE.LineBasicMaterial({ color: c, depthTest: false, transparent: true, opacity: 0.85 }));
+  const dotMat = new THREE.MeshBasicMaterial({ color: 0xe0a400, depthTest: false, transparent: true });
+  const dotGeo = new THREE.SphereGeometry(0.32, 14, 10);
+  let measure = [];
+  function drawMeasure() {
+    for (const c of [...mg.children]) {
+      mg.remove(c);
+      if (c.geometry !== dotGeo) c.geometry?.dispose();
+    }
+    const pts = measure.map((m) => new THREE.Vector3(...m.p).multiplyScalar(0.1));
+    for (const p of pts) mg.add(onTop(new THREE.Mesh(dotGeo, dotMat)).translateX(p.x).translateY(p.y).translateZ(p.z));
+    if (pts.length === 2) {
+      const [a, b] = pts;
+      const main = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), lineMat);
+      main.computeLineDistances();
+      mg.add(onTop(main));
+      // kaki sumbu: x (merah) → y (hijau) → z (biru), seperti garis dimensi
+      const c1 = new THREE.Vector3(b.x, a.y, a.z);
+      const c2 = new THREE.Vector3(b.x, b.y, a.z);
+      [[a, c1], [c1, c2], [c2, b]].forEach(([u, w], i) => {
+        if (u.distanceToSquared(w) > 1e-6) mg.add(onTop(new THREE.Line(new THREE.BufferGeometry().setFromPoints([u, w]), legMats[i])));
+      });
+    }
+    mg.visible = active && pts.length > 0;
+  }
+
+  /* ---------- label HTML di 3D (ukur, kecepatan) ---------- */
+  let labels = [];
+  function setLabelList(list) {
+    for (const l of labels) l.el.remove();
+    labels = list.map((x) => {
+      const e = el('div', { className: 'plabel' + (x.cls ? ' ' + x.cls : ''), textContent: x.text });
+      layer.append(e);
+      return { el: e, p: new THREE.Vector3(...x.p), x: -1, y: -1 };
+    });
+  }
+  let measureLabel = [];
+  let speedLabels = [];
+  const refreshLabels = () => setLabelList([...speedLabels, ...measureLabel]);
+  function placeLabels() {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    for (const l of labels) {
+      v.copy(l.p).multiplyScalar(0.1).project(camera);
+      const vis = v.z > -1 && v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05;
+      if (l.el.hidden === vis) l.el.hidden = !vis;
+      if (!vis) continue;
+      const x = Math.round(((v.x + 1) / 2) * w);
+      const y = Math.round(((1 - v.y) / 2) * h);
+      if (x !== l.x || y !== l.y) {
+        l.x = x;
+        l.y = y;
+        l.el.style.transform = `translate(${x}px, ${y}px)`;
+      }
+    }
+  }
+  let roles = { inlet: null, outlet: null };
+  const roleOf = (port) => (sameEnd(port, roles.inlet) ? 'in' : sameEnd(port, roles.outlet) ? 'out' : '');
 
   return {
     rebuild,
@@ -206,12 +290,40 @@ export function createPlumbEditor({ world, onPickPart, onPickPort }) {
       refreshHighlight();
       syncMarkers();
     },
+    /** Warnai merah bagian yang menabrak (id). */
+    setCollisions(ids) {
+      hitSet = new Set(ids);
+      for (const g of root.children) for (const m of g.children) m.material = hitSet.has(g.userData.pid) ? hitMat : m.userData.mat;
+    },
+    /** Mode ukur: ketukan di kaca/meja juga menjadi titik. */
+    setMeasuring(on) {
+      measuring = !!on;
+    },
+    /** Titik ukur [{p: [x,y,z] mm, label}] (0–2) + teks label di tengah garis. */
+    setMeasure(points, text) {
+      measure = points.slice(0, 2);
+      drawMeasure();
+      measureLabel =
+        measure.length === 2 && text ? [{ p: measure[0].p.map((x, i) => (x + measure[1].p[i]) / 2), text, cls: 'plabel-m' }] : [];
+      refreshLabels();
+    },
+    /** Label kecepatan [{p: [x,y,z] mm, text, cls?}]. */
+    setSpeedLabels(list) {
+      speedLabels = list || [];
+      refreshLabels();
+    },
+    /** Tandai ujung masuk (pompa) & keluar untuk hidrolik. */
+    setRoles(r) {
+      roles = { inlet: r?.inlet || null, outlet: r?.outlet || null };
+      syncMarkers();
+    },
     /** Masuk/keluar mode rakit. */
     show(on) {
       active = on;
       root.visible = on;
       grid.visible = on;
       layer.hidden = !on;
+      mg.visible = on && measure.length > 0;
       if (!on) {
         hl.set(null);
         camera.layers.set(0);
@@ -241,6 +353,7 @@ export function createPlumbEditor({ world, onPickPart, onPickPort }) {
       if (!active) return;
       syncMarkersOnce();
       placeMarkers();
+      if (labels.length) placeLabels();
       hl.tick(t);
     },
   };

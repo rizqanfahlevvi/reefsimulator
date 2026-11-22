@@ -80,7 +80,7 @@ export const COMPONENTS = {
     desc: 'Pompa di chamber terakhir filter, dengan pelampung pemutus otomatis.',
     info: ({ S, P }) => {
       const st = !P.on ? 'mati (listrik)' : S.cutHi ? 'mati (pelampung atas)' : S.cutLo ? 'mati (pelampung bawah)' : S.HP < 2.3 ? 'jalan kering!' : 'jalan';
-      return `${st} · ${L(Math.max(0, S.q.r))} · head ${fmt(S.q.hp, 0)} / statis ${fmt(S.q.hs, 0)} cm`;
+      return `${st} · ${L(Math.max(0, S.q.r))} · head ${fmt(S.q.hp, 0)} / statis ${fmt(S.q.hs, 0)} cm` + (P.retLine ? ` · pipa return dari desain "${P.retLine.name || 'rakit pipa'}"` : '');
     },
     controls: ['s_spd', 's_qmax', 's_hmax', 's_rv', 't_fswHi', 't_fswLo'],
   },

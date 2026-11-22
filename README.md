@@ -114,7 +114,7 @@ itu langsung menyalakan tampilan yang dibutuhkan (mis. memilih besaran "Umur air
 bidang potong menyalakan bidang potong tank) dan memberi tahu lewat pesan singkat di tampilan 3D. Saat jejak partikel 3D
 aktif, legenda warnanya tampil di pojok tampilan 3D (merah = arus < 1 cm/s, bukan error).
 
-## Rakit pipa (fase 1)
+## Rakit pipa (fase 1–3)
 
 Tombol **Rakit pipa** di tampilan 3D membuka mode perakitan desain perpipaan (`src/plumb/`, `src/ui/plumbpanel.js`).
 Simulasi arus dijeda dan panel berganti menjadi katalog.
@@ -136,8 +136,35 @@ Simulasi arus dijeda dan panel berganti menjadi katalog.
 - **Simpan**: otomatis di browser, simpan dengan nama, ekspor/impor `.json` (divalidasi; bagian rusak dibuang).
 - **Data dimensi**: terverifikasi — diameter luar metrik, panjang sok metrik ISO 727 (0,5·D + 6 mm), drat BSP ISO 7-1;
   perkiraan (beda antar merek) — diameter luar & tebal seri Indonesia, kedalaman sok tipe JIS, panjang badan fitting.
-- Fase berikutnya: penempatan & cek tabrakan dengan kaca, alat ukur, templat (fase 2); rugi tekanan desain ikut ke model
-  hidrolik (fase 3).
+
+### Fase 2: templat, alat ukur, cek tabrakan (`src/plumb/templates.js`, `src/plumb/collide.js`)
+
+- **Templat siap pakai** (kartu "Rangkaian baru"): U-pipe siphon ½"/¾" dengan posisi sama seperti siphon di simulasi
+  (intake 8 cm, puncak 34 cm, ujung buang 22 cm, ball valve di kaki tank), dan return pompa ½"/¾" dari keluaran pompa
+  ke sendi duckbill (rute selang return di simulasi) dengan union di atas pompa + ball valve di atas muka air filter.
+  Seri metrik memakai 20/25 mm. Semua dirakit dari bagian katalog biasa, jadi bisa diubah.
+- **Ukur jarak**: ketuk dua titik (ujung hijau, bagian = titik tengahnya, atau kaca/meja) → jarak lurus + Δx/Δy/Δz,
+  garis putus-putus dan kaki sumbu merah/hijau/biru di 3D.
+- **Cek tabrakan** otomatis tiap perubahan: bagian sebagai kapsul (pipa selebar diameter luar, fitting selebar badan
+  sok) terhadap kaca tank & filter, sekat, badan pompa, protein skimmer, meja, lemari, dan bagian lain. Bagian yang
+  menabrak diwarnai merah dan didaftar (ketuk untuk memilih). Bulkhead boleh menembus kaca; bagian yang bersebelahan di
+  rakitan tidak dicek satu sama lain; toleransi 1 mm.
+
+### Fase 3: hidrolik desain (`src/plumb/hydro.js`, `returnK` di `src/physics/hydraulics.js`)
+
+- **Jalur**: dari ujung masuk (otomatis bila ada ujung terbuka ≤ 6 cm dari keluaran pompa, atau pilih manual) ke ujung
+  keluar (bawaan: terdekat ke duckbill), menelusuri pohon rakitan. Ujung lain yang masih terbuka diperingatkan.
+- **Rugi**: gesek pipa Darcy–Weisbach (f dari Re, Blasius untuk pipa halus); fitting metode Crane TP-410
+  K = f_T·(L/D) dengan L/D knee 90° 30, knee 45° 16, belokan 180° 50, tee lurus 20, tee cabang 60, gate valve 8,
+  ball valve 3 — f_T dari rumus turbulen penuh 1/√f = −2·log10(ε/3,7D), ε = 0,045 mm (±5% dari tabel Crane); reducer
+  mendadak 0,5(1−β²) / (1−β²)²; sok, union, adapter, bulkhead = perkiraan. Ball valve pertama di jalur mengikuti slider
+  bukaan ball valve return. Ujung keluar duckbill = energi kinetik jet di mulut 1,5 cm² (sama dengan jet CFD).
+- **Titik kerja**: kurva pompa (H = Hmax·daya² − c·Q²) = beda statis + Σ rugi; dibandingkan dengan pipa return bawaan.
+  Rincian per bagian (Ø, kecepatan, K, rugi), kecepatan tertinggi (peringatan di atas ±2,5 m/s), label kecepatan 3D.
+- **Pakai sebagai pipa return di simulasi**: luas acuan, panjang inersia, K ekuivalen (tiap ruas di kecepatannya sendiri,
+  diacu ke luas acuan) dan tinggi ujung keluar dipakai model pompa — termasuk aliran balik saat padam. Pilihan disimpan
+  dan dipulihkan saat halaman dibuka; tanpa desain, model bawaan v1 tetap bit-identik (diuji). Ringkasan hidrolik ikut
+  laporan Claude (bagian 13) dan kartu pompa.
 
 ## Analisis & laporan untuk Claude
 

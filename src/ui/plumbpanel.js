@@ -1,6 +1,7 @@
 /**
- * Panel mode "Rakit pipa": mulai rangkaian, katalog bagian yang cocok dengan ujung terpilih,
- * properti bagian, undo/redo, daftar bahan, serta simpan/muat/ekspor desain.
+ * Panel mode "Rakit pipa": mulai rangkaian (atau templat), katalog bagian yang cocok dengan ujung
+ * terpilih, properti bagian, undo/redo, daftar bahan, simpan/muat/ekspor desain; fase 2: alat
+ * ukur & cek tabrakan; fase 3: hidrolik jalur return + "pakai sebagai pipa return di simulasi".
  * Semua perubahan lewat model murni (plumb/model.js) lalu editor 3D dibangun ulang.
  */
 import { SIZES, SIZE_ORDER, COLORS, TYPES, CATS, END_LABEL, classFor } from '../plumb/catalog.js';
@@ -22,31 +23,21 @@ import {
   LEN,
 } from '../plumb/model.js';
 import { bom, bomMarkdown, partName } from '../plumb/bom.js';
+import { loadStore, saveStore } from '../plumb/store.js';
+import { analyzeLine, operatingPoints, applyRetLine, EXITS, V_HIGH } from '../plumb/hydro.js';
+import { collisions } from '../plumb/collide.js';
+import { TEMPLATES, templateLabel, buildTemplate } from '../plumb/templates.js';
+import { app } from '../state.js';
 import { logEvent } from '../diag.js';
 import { el, fmt } from '../util/format.js';
 import { toast } from './toast.js';
 
-const STORE = 'reefsim:pipa';
 const cm = (mm) => fmt(mm / 10, 1);
-
-function loadStore() {
-  try {
-    const s = JSON.parse(localStorage.getItem(STORE) || 'null');
-    if (!s || typeof s !== 'object') return { cur: null, saved: {} };
-    const saved = {};
-    for (const [k, v] of Object.entries(s.saved || {})) saved[k.slice(0, 60)] = validateDesign(v).design;
-    return { cur: s.cur ? validateDesign(s.cur).design : null, saved };
-  } catch {
-    return { cur: null, saved: {} };
-  }
-}
-
-/** Ringkasan desain tersimpan untuk laporan Claude (tanpa membuka mode rakit). */
-export function plumbingSummary() {
-  const { cur } = loadStore();
-  if (!cur || !cur.parts.length) return null;
-  return { name: cur.name, parts: cur.parts.length, markdown: bomMarkdown(bom(cur), cur.name) };
-}
+const endKey = (e) => (e ? e.pid + ':' + e.port : '');
+const parseEnd = (k) => {
+  const [pid, port] = String(k).split(':').map(Number);
+  return Number.isInteger(pid) && Number.isInteger(port) ? { pid, port } : null;
+};
 
 /** Preset titik awal (cm) di sekitar tank. */
 const PRESETS = [
@@ -71,6 +62,11 @@ export function buildPlumbPanel(root, { editor, onExit }) {
   const store = loadStore();
   let design = store.cur || newDesign();
   let saved = store.saved;
+  const sim = store.sim; // pilihan hidrolik: {on, inlet, outlet, exit}
+  let hyd = null; // hasil analyzeLine terakhir
+  let col = { hits: [], parts: new Set() };
+  let showSpeed = false;
+  const meas = { on: false, pts: [] };
   const undo = [];
   const redo = [];
   let sel = { part: null, port: null };
@@ -79,13 +75,7 @@ export function buildPlumbPanel(root, { editor, onExit }) {
   // bawaan untuk bagian baru
   const prefs = { series: 'in', cls: 'AW', size: 'i34', color: 'abu', len: 200, stick: 4000 };
 
-  const persist = () => {
-    try {
-      localStorage.setItem(STORE, JSON.stringify({ cur: design, saved }));
-    } catch {
-      /* penyimpanan penuh/tidak ada */
-    }
-  };
+  const persist = () => saveStore({ cur: design, saved, sim });
 
   /** Ubah desain dengan undo; error (mis. sambungan tidak cocok) → pesan, desain tidak berubah. */
   function mutate(fn, okMsg) {
@@ -107,8 +97,28 @@ export function buildPlumbPanel(root, { editor, onExit }) {
   function commit() {
     editor.rebuild(design);
     editor.select(sel.part, sel.port);
+    analyze();
     persist();
     render();
+  }
+
+  /** Cek tabrakan + hidrolik setelah desain berubah; jalur simulasi ikut diperbarui. */
+  function analyze() {
+    col = collisions(design, editor.frames);
+    editor.setCollisions(col.parts);
+    hyd = design.parts.length ? analyzeLine(design, sim) : null;
+    if (hyd?.ok) {
+      sim.inlet = hyd.inlet;
+      sim.outlet = hyd.outlet;
+    }
+    editor.setRoles(hyd?.ok ? { inlet: hyd.inlet, outlet: hyd.outlet } : null);
+    if (sim.on && !hyd?.ok) {
+      sim.on = false;
+      toast('Desain tidak lagi punya jalur pompa → ujung keluar yang valid; simulasi kembali memakai pipa return bawaan');
+      logEvent('ubah', 'Rakit pipa: pipa return simulasi kembali ke bawaan (jalur desain tidak valid)');
+    }
+    const want = sim.on && hyd?.ok ? hyd.line : null;
+    if (want || app.P.retLine) applyRetLine(app.P, app.S, want);
   }
 
   /* ---------- kerangka panel ---------- */
@@ -200,6 +210,9 @@ export function buildPlumbPanel(root, { editor, onExit }) {
   );
 
   const ctxCard = el('div', { className: 'card pl-ctx' });
+  const toolCard = el('div', { className: 'card' });
+  const hydCard = el('div', { className: 'card' });
+  const hydLive = el('p', { className: 'note pl-live' });
   const bomBox = el('div');
   const bomCard = el('div', { className: 'card' }, [el('details', { open: true }, [el('summary', { textContent: 'Daftar bahan' }), bomBox])]);
   const note = el('p', {
@@ -207,7 +220,7 @@ export function buildPlumbPanel(root, { editor, onExit }) {
     textContent:
       'Dimensi seri Indonesia (diameter luar, tebal AW/D, kedalaman sok, panjang badan fitting) adalah perkiraan dan beda antar merek; sok metrik mengikuti ISO 727 dan drat mengikuti BSP (ISO 7-1). Material hanya uPVC — fitting besi/kuningan tidak disediakan karena berkarat dan beracun di air laut.',
   });
-  root.append(head, ctxCard, bomCard, note);
+  root.append(head, ctxCard, toolCard, hydCard, bomCard, note);
 
   function renderLoad() {
     const names = Object.keys(saved);
@@ -296,6 +309,24 @@ export function buildPlumbPanel(root, { editor, onExit }) {
     );
     const bFit = el('button', { textContent: 'Mulai dengan fitting' });
     bFit.addEventListener('click', () => start(typeSel.value));
+    const tpl = el(
+      'div',
+      { className: 'btns' },
+      TEMPLATES.map((t) => {
+        const label = templateLabel(t, prefs.series);
+        const b = el('button', { textContent: label });
+        b.addEventListener('click', () => {
+          mutate(() => {
+            const id = buildTemplate(design, t, { series: prefs.series, cls: prefs.cls });
+            showStart = false;
+            sel = { part: id, port: null };
+            logEvent('ubah', 'Rakit pipa: templat ' + label);
+          }, label + ' ditambahkan');
+          editor.focus();
+        });
+        return b;
+      }),
+    );
     const cancel = design.parts.length ? el('button', { textContent: 'Batal' }) : null;
     cancel?.addEventListener('click', () => {
       showStart = false;
@@ -309,6 +340,12 @@ export function buildPlumbPanel(root, { editor, onExit }) {
       presets,
       el('div', { className: 'pl-grid2' }, [field('Panjang pipa (cm)', lenIn), el('div', { className: 'pl-field' }, [el('span', { textContent: ' ' }), bPipe])]),
       el('div', { className: 'pl-grid2' }, [field('atau fitting', typeSel), el('div', { className: 'pl-field' }, [el('span', { textContent: ' ' }), bFit])]),
+      el('h4', { className: 'pl-sub', textContent: 'Templat siap pakai' }),
+      el('p', {
+        className: 'note',
+        textContent: 'Posisi sama dengan siphon & selang return di simulasi (seri & kelas mengikuti pilihan di atas). Templat return langsung bisa dihitung hidroliknya dan dipakai di simulasi.',
+      }),
+      tpl,
       cancel ? el('div', { className: 'btns' }, [cancel]) : null,
     );
   }
@@ -544,6 +581,199 @@ export function buildPlumbPanel(root, { editor, onExit }) {
     );
   }
 
+  /* ---------- alat: ukur & tabrakan (fase 2) ---------- */
+  const partById = (id) => design.parts.find((p) => p.id === id);
+  function measureText() {
+    if (meas.pts.length < 2) return null;
+    const [a, b] = meas.pts;
+    const d = a.p.map((x, i) => b.p[i] - x);
+    return { dist: Math.hypot(...d), d };
+  }
+  function addMeasurePoint(pt) {
+    meas.pts = meas.pts.length >= 2 ? [pt] : [...meas.pts, pt];
+    const m = measureText();
+    editor.setMeasure(meas.pts, m ? `${cm(m.dist)} cm` : null);
+    renderTools();
+  }
+  function renderTools() {
+    const rows = [];
+    const bMeas = el('button', { className: meas.on ? 'pl-primary' : '', textContent: meas.on ? 'Selesai mengukur' : 'Ukur jarak' });
+    bMeas.addEventListener('click', () => {
+      meas.on = !meas.on;
+      editor.setMeasuring(meas.on);
+      if (meas.on) {
+        meas.pts = [];
+        editor.setMeasure([]);
+      }
+      renderTools();
+    });
+    const acts = [bMeas];
+    if (meas.pts.length) {
+      const bClr = el('button', { textContent: 'Hapus ukuran' });
+      bClr.addEventListener('click', () => {
+        meas.pts = [];
+        editor.setMeasure([]);
+        renderTools();
+      });
+      acts.push(bClr);
+    }
+    rows.push(el('div', { className: 'pl-head' }, [el('b', { textContent: 'Alat' }), el('div', { className: 'btns' }, acts)]));
+    if (meas.on || meas.pts.length) {
+      const m = measureText();
+      const lab = (pt) => `${pt.label} (${pt.p.map((x) => cm(x)).join(' · ')})`;
+      rows.push(
+        el('p', {
+          className: 'note',
+          textContent: m
+            ? `${lab(meas.pts[0])} → ${lab(meas.pts[1])}`
+            : meas.pts.length
+              ? `Titik 1: ${lab(meas.pts[0])}. Ketuk titik kedua.`
+              : 'Ketuk dua titik: ujung hijau, bagian (titik tengahnya), atau kaca/meja.',
+        }),
+      );
+      if (m)
+        rows.push(
+          el('div', { className: 'pl-meas' }, [
+            el('b', { textContent: `${cm(m.dist)} cm` }),
+            el('span', { className: 'ax-x', textContent: `Δx ${cm(m.d[0])}` }),
+            el('span', { className: 'ax-y', textContent: `Δy ${cm(m.d[1])}` }),
+            el('span', { className: 'ax-z', textContent: `Δz ${cm(m.d[2])}` }),
+          ]),
+        );
+    }
+    if (design.parts.length) {
+      if (!col.hits.length) rows.push(el('p', { className: 'note pl-ok', textContent: '✓ Tidak ada bagian yang menabrak kaca, sekat, pompa, skimmer, meja, atau bagian lain.' }));
+      else {
+        const list = col.hits.slice(0, 6).map((h) => {
+          const part = partById(h.pid);
+          const b = el('button', {
+            className: 'pl-hit',
+            textContent: `${partName(part)} ${h.other != null ? 'bertabrakan dengan ' + partName(partById(h.other)) : 'menembus ' + h.what} (±${fmt(h.depth, 0)} mm)`,
+          });
+          b.addEventListener('click', () => api.pickPart(h.pid));
+          return b;
+        });
+        rows.push(
+          el('p', { className: 'note pl-warn', textContent: `Tabrakan: ${col.hits.length} (bagian merah). Bulkhead boleh menembus kaca. Ketuk untuk memilih bagiannya:` }),
+          el('div', { className: 'pl-hits' }, list),
+        );
+      }
+    }
+    toolCard.replaceChildren(...rows);
+  }
+
+  /* ---------- hidrolik jalur return (fase 3) ---------- */
+  function renderHydro() {
+    hydCard.hidden = !design.parts.length;
+    if (hydCard.hidden) return editor.setSpeedLabels([]);
+    const free = editor.free;
+    const portLabel = (f) => {
+      const part = partById(f.pid);
+      return `${partName(part)} · ${portName(part.type, f.port)} · tinggi ${cm(f.p.y)} cm`;
+    };
+    const opts = [['', '— pilih ujung —'], ...free.map((f) => [endKey(f), portLabel(f)])];
+    const recompute = () => {
+      analyze();
+      persist();
+      render();
+    };
+    const inSel = select(opts, endKey(hyd?.inlet), (v) => {
+      sim.inlet = parseEnd(v);
+      recompute();
+    });
+    const outSel = select(opts, endKey(hyd?.outlet), (v) => {
+      sim.outlet = parseEnd(v);
+      recompute();
+    });
+    const exitSel = select(Object.entries(EXITS).map(([k, e]) => [k, e.label]), sim.exit, (v) => {
+      sim.exit = v;
+      recompute();
+    });
+    const rows = [
+      el('p', {
+        className: 'note',
+        textContent: 'Jalur dari ujung masuk (keluaran pompa) ke ujung keluar: gesek pipa Darcy–Weisbach + rugi fitting metode Crane (K = f_T·L/D) + perubahan diameter, lalu dicari titik kerja di kurva pompa.',
+      }),
+      el('div', { className: 'pl-grid2' }, [field('Ujung masuk (pompa)', inSel), field('Ujung keluar', outSel)]),
+      field('Jenis ujung keluar', exitSel),
+    ];
+    let speed = [];
+    if (!hyd?.ok) rows.push(el('p', { className: 'note pl-warn', textContent: hyd?.error || 'Belum ada jalur.' }));
+    else {
+      const op = operatingPoints(hyd, app.P, app.S);
+      const d = op.design;
+      rows.push(
+        el('div', { className: 'pl-meas' }, [el('b', { textContent: `±${Math.round(d.Lph)} L/jam` }), el('span', { textContent: `head pompa ${fmt(d.head, 1)} cm` }), el('span', { textContent: `beda statis ${fmt(op.hs, 1)} cm` })]),
+        el('p', {
+          className: 'note',
+          textContent:
+            `Pipa return bawaan simulasi pada level yang sama: ±${Math.round(op.base.Lph)} L/jam. Panjang jalur ±${fmt(hyd.lengthCm, 0)} cm, ujung keluar di ${fmt(hyd.zout, 1)} cm. ` +
+            `Kecepatan tertinggi ${fmt(op.vmax / 100, 2)} m/s` +
+            (op.vmax / 100 > V_HIGH ? ` — di atas ±${fmt(V_HIGH, 1)} m/s (patokan umum pipa tekan): rugi besar dan aliran berisik, pertimbangkan pipa lebih besar.` : '.'),
+        }),
+      );
+      const tbl = el('table', { className: 'el pl-table' }, [
+        el('tr', {}, ['Bagian', 'Ø dlm mm', 'v m/s', 'K', 'Rugi cm'].map((t) => el('th', { textContent: t }))),
+        ...op.rows.map((r) =>
+          el('tr', { title: r.src }, [
+            el('td', { textContent: r.label }),
+            el('td', { textContent: fmt(r.D * 10, 1) }),
+            el('td', { textContent: fmt(r.v / 100, 2) }),
+            el('td', { textContent: fmt(r.Kv, 2) }),
+            el('td', { textContent: fmt(r.h, 1) }),
+          ]),
+        ),
+      ]);
+      rows.push(el('details', {}, [el('summary', { textContent: 'Rincian rugi per bagian' }), tbl, el('p', { className: 'note', textContent: 'K pipa = f·L/D (gesek); knee/tee/valve = f_T·L/D (Crane TP-410); sok, union, adapter, bulkhead = perkiraan. Ketuk lama baris untuk melihat dasarnya.' })]));
+      for (const w of hyd.warnings) rows.push(el('p', { className: 'note pl-warn', textContent: w }));
+      if (showSpeed)
+        speed = op.rows
+          .filter((r) => r.kind === 'pipe')
+          .map((r) => {
+            const f = editor.frames.get(r.pid);
+            const a = f.ports[0].p;
+            const b = f.ports[1].p;
+            return { p: [(a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2], text: `${fmt(r.v / 100, 2)} m/s`, cls: r.v / 100 > V_HIGH ? 'plabel-hi' : '' };
+          });
+    }
+    editor.setSpeedLabels(speed);
+    const spd = el('input', { type: 'checkbox', checked: showSpeed, disabled: !hyd?.ok });
+    spd.addEventListener('change', () => {
+      showSpeed = spd.checked;
+      renderHydro();
+    });
+    const use = el('input', { type: 'checkbox', checked: sim.on && !!hyd?.ok, disabled: !hyd?.ok, id: 'plUseSim' });
+    use.addEventListener('change', () => {
+      sim.on = use.checked;
+      analyze();
+      persist();
+      logEvent('ubah', `Rakit pipa: pipa return simulasi → ${sim.on ? 'desain "' + design.name + '"' : 'bawaan'}`);
+      toast(sim.on ? 'Simulasi memakai jalur desain ini: debit & head pompa mengikuti desain' : 'Simulasi kembali memakai pipa return bawaan');
+      renderHydro();
+    });
+    rows.push(
+      el('label', { className: 'tg' }, [spd, el('span', { textContent: 'Tampilkan kecepatan di tiap pipa (3D)' })]),
+      el('label', { className: 'tg pl-use' }, [use, el('span', { textContent: 'Pakai sebagai pipa return di simulasi' })]),
+      el('p', {
+        className: 'note',
+        textContent: 'Saat dipakai: debit, head pompa, dan inersia kolom air di simulasi mengikuti desain (juga saat padam). Posisi & arah duckbill di simulasi arus tetap dari pengaturan Return/duckbill.',
+      }),
+      hydLive,
+    );
+    hydCard.replaceChildren(el('details', { open: true }, [el('summary', { textContent: 'Hidrolik jalur return' }), ...rows]));
+    tickLive(true);
+  }
+
+  let liveAt = 0;
+  function tickLive(force) {
+    const now = performance.now();
+    if (!force && now - liveAt < 500) return;
+    liveAt = now;
+    if (hydCard.hidden) return;
+    const q = app.S.q;
+    hydLive.textContent = `Simulasi sekarang: ${Math.round(Math.max(0, q.r) * 3.6)} L/jam · head ${fmt(q.hp, 1)} cm · pipa return ${app.P.retLine ? 'dari desain' : 'bawaan'}${app.P.on ? '' : ' (listrik padam)'}`;
+  }
+
   function renderBom() {
     const b = bom(design, { stick: prefs.stick });
     const box = editor.bounds();
@@ -619,6 +849,8 @@ export function buildPlumbPanel(root, { editor, onExit }) {
     else if (sel.port) renderPort();
     else if (sel.part != null) renderPart();
     else renderIdle();
+    renderTools();
+    renderHydro();
     renderBom();
   }
 
@@ -633,21 +865,44 @@ export function buildPlumbPanel(root, { editor, onExit }) {
 
   renderLoad();
   editor.rebuild(design);
+  analyze();
   render();
 
-  return {
+  const api = {
     /** Dipanggil editor saat bagian diketuk (null = area kosong). */
     pickPart(id) {
+      if (meas.on) {
+        if (id == null) return toast('Ketuk ujung hijau, bagian, atau kaca/meja untuk titik ukur');
+        const part = partById(id);
+        const f = editor.frames.get(id);
+        const c =
+          part.type === 'pipe'
+            ? [0, 1, 2].map((i) => (f.ports[0].p.getComponent(i) + f.ports[1].p.getComponent(i)) / 2)
+            : [f.m.elements[12], f.m.elements[13], f.m.elements[14]];
+        return addMeasurePoint({ p: c, label: partName(part) + ' (tengah)' });
+      }
       sel = { part: id, port: null };
       showStart = false;
       editor.select(sel.part, sel.port);
       render();
     },
     pickPort(pid, port) {
+      if (meas.on) {
+        const pt = editor.frames.get(pid).ports[port];
+        return addMeasurePoint({ p: [pt.p.x, pt.p.y, pt.p.z], label: 'ujung ' + partName(partById(pid)) });
+      }
       sel = { part: null, port: { pid, port } };
       showStart = false;
       editor.select(sel.part, sel.port);
       render();
+    },
+    /** Titik ukur di kaca/meja (dari editor). */
+    pickPoint(pt) {
+      if (meas.on) addMeasurePoint(pt);
+    },
+    /** Tiap frame dari main.js: baris "simulasi sekarang" di kartu hidrolik. */
+    tick() {
+      tickLive(false);
     },
     get design() {
       return design;
@@ -655,8 +910,15 @@ export function buildPlumbPanel(root, { editor, onExit }) {
     get refVisible() {
       return refVisible;
     },
+    get hydro() {
+      return hyd;
+    },
+    get collisions() {
+      return col;
+    },
     // akses uji otomatis
     mutate,
   };
+  return api;
 }
 
