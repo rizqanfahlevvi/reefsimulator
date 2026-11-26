@@ -1,59 +1,328 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="id">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="description" content="Desain 2: tank 60×40×40 dengan overflow bersisir eksternal (lubang bor, Bean Animal) — model 3D dan kalkulator muka air." />
-    <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#151514" media="(prefers-color-scheme: dark)" />
-    <title>Desain 2 · Overflow sisir + Bean Animal</title>
-  </head>
-  <body class="d2">
-    <header>
-      <nav class="pagetabs" aria-label="Pilih desain">
-        <a href="./">Desain 1 · back filter</a>
-        <a href="./desain2.html" aria-current="page">Desain 2 · overflow sisir</a>
-      </nav>
-      <h1>Desain 2: overflow sisir + Bean Animal</h1>
-      <p>Tank 60×40×40 cm. Kotak sisir di dalam tank, kotak luar di balik kaca belakang, disambung lewat lubang bor. Sump menyusul.</p>
-    </header>
-    <div id="app">
-      <div id="viewWrap">
-        <div id="view">
-          <div id="hud">
-            <div id="status" role="status" aria-live="polite">Menghitung…</div>
-          </div>
-          <div id="vbtn">
-            <button data-v="iso" type="button">Miring</button>
-            <button data-v="front" type="button">Depan</button>
-            <button data-v="back" type="button">Overflow</button>
-            <button data-v="side" type="button">Potongan</button>
-            <button data-v="top" type="button">Atas</button>
-            <button id="bCut" type="button" title="Potong model melalui lubang penghubung">Potong</button>
-            <button id="bLbl" type="button" title="Tampilkan/sembunyikan label">Label</button>
-          </div>
-          <div id="hint">Seret: putar · cubit/scroll: zoom</div>
-          <div id="glError" hidden>
-            <b>3D tidak bisa ditampilkan.</b>
-            <span>Browser atau perangkat ini tidak mendukung WebGL 2. Kalkulator tetap berjalan.</span>
-          </div>
-        </div>
-      </div>
-      <div id="panel"></div>
-      <div id="charts">
-        <div class="card">
-          <p class="note">
-            <b>Model:</b> keadaan tunak per debit. Celah sisir dihitung sebagai weir celah persegi (Cd 0,6) dengan koreksi tenggelam
-            Villemonte; lubang penghubung sebagai lubang/bulkhead (Cd 0,7); siphon utama sebagai aliran penuh (rugi masuk, dua siku,
-            gate valve, keluar, dan gesek); jalur terbuka & darurat sebagai weir keliling bibir pipa yang dibatasi lubang. Gate valve
-            otomatis disetel supaya air kotak luar ±0,5 cm di atas bibir jalur terbuka. Tebal kaca dari teori pelat tiga sisi dijepit
-            (σ 19,2 MPa, air laut). Tinggi sump di bawah kotak luar dan panjang pipa masih perkiraan sampai sump didesain. Angka adalah
-            acuan untuk dikalibrasi saat uji air tawar.
-          </p>
-        </div>
-      </div>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Desain 2: overflow box sisir akrilik untuk tank 60×40×40 — model 3D, gambar kerja, spesifikasi tukang, dan cek debit.">
+<title>Overflow Box Sisir – Desain 3D untuk Tukang Akrilik</title>
+<style>
+.band{background:#0f766e;color:#fff;border-radius:10px;padding:9px 12px;margin:16px 0 8px;font:700 14px/1.35 inherit;font-family:inherit}
+*{box-sizing:border-box}
+html,body{margin:0;background:#f4f6f8;color:#16202a;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+header{padding:14px 16px 6px;max-width:980px;margin:0 auto}
+h1{font-size:19px;margin:0 0 2px;line-height:1.25}
+header p{margin:0;color:#52606d;font-size:13px}
+.tabs{position:sticky;top:0;z-index:20;background:#f4f6f8;display:flex;gap:6px;padding:8px 16px;max-width:980px;margin:0 auto}
+.tab{flex:1;border:1px solid #cbd5e0;background:#fff;color:#334155;border-radius:10px;padding:9px 4px;font:600 13px inherit;font-family:inherit;cursor:pointer}
+.tab.on{background:#0f766e;border-color:#0f766e;color:#fff}
+main{max-width:980px;margin:0 auto;padding:0 16px 40px}
+section[hidden]{display:none}
+#viewer{position:relative;height:62vh;min-height:360px;max-height:640px;border-radius:14px;overflow:hidden;background:linear-gradient(#e9eef3,#cfd8e1);border:1px solid #cbd5e0;touch-action:none}
+#c{width:100%;height:100%;display:block}
+#labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.dl.tag{background:#0f766e;border-color:#0f766e;color:#fff}
+.dl{position:absolute;left:0;top:0;background:rgba(255,255,255,.92);color:#c2410c;border:1px solid #ea580c;border-radius:6px;padding:0 5px;font:700 11px/16px inherit;font-family:inherit;white-space:nowrap}
+#nogl{padding:20px;color:#7c2d12}
+.vnote{position:absolute;left:10px;top:8px;max-width:calc(100% - 20px);font-size:11px;font-weight:600;color:#0f766e;background:rgba(255,255,255,.85);padding:3px 9px;border-radius:8px;pointer-events:none;z-index:2}
+.hint{position:absolute;left:10px;bottom:8px;font-size:11px;color:#475569;background:rgba(255,255,255,.7);padding:2px 8px;border-radius:8px;pointer-events:none}
+.row{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.rl{flex-basis:100%;font:700 12px inherit;font-family:inherit;color:#0f766e;margin-top:4px}
+.chip.dt{border-color:#0f766e}
+.chip{border:1px solid #cbd5e0;background:#fff;border-radius:999px;padding:6px 12px;font:600 12.5px inherit;font-family:inherit;color:#334155;cursor:pointer}
+.chip.on{background:#e6f4f1;border-color:#0f766e;color:#0f766e}
+.ctl{background:#fff;border:1px solid #d9e0e7;border-radius:12px;padding:10px 14px;margin:10px 0}
+.ctl label.sl{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600}
+.ctl input[type=range]{flex:1;accent-color:#0f766e}
+.tg{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:13px}
+.tg label{display:flex;align-items:center;gap:6px}
+.card{background:#fff;border:1px solid #d9e0e7;border-radius:12px;padding:12px 14px;margin:12px 0}
+.card h2{font-size:15px;margin:0 0 6px}
+.card h3{font-size:13px;margin:14px 0 6px;color:#0f766e}
+.legend{display:grid;grid-template-columns:1fr;gap:4px;font-size:13px;color:#334155}
+.sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+figure{margin:0 0 4px;background:#fff;border:1px solid #d9e0e7;border-radius:12px;padding:10px 8px 8px}
+figure figcaption{font-size:12.5px;color:#475569;padding:0 6px}
+figure h3{margin:0 6px 4px;font-size:14px}
+figure svg{width:100%;height:auto;display:block}
+.sc{overflow-x:auto}
+svg .ln{stroke:#111;stroke-width:1.2;fill:none}
+svg .pl{fill:#eef1f4;stroke:#111;stroke-width:1.6}
+svg .ho{fill:#fff;stroke:#111;stroke-width:1.4}
+svg .slot{fill:#fff;stroke:#111;stroke-width:.9}
+svg .cl{stroke:#6b7280;stroke-width:.8;stroke-dasharray:6 3 1.5 3}
+svg .dm{stroke:#c2410c;stroke-width:1}
+svg .dx{stroke:#c2410c;stroke-width:.7}
+svg .dt{fill:#9a3412;font:600 13px -apple-system,Segoe UI,Roboto,sans-serif;paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}
+svg .lb{fill:#0f172a;font:700 13px -apple-system,Segoe UI,Roboto,sans-serif}
+svg .lb2{fill:#334155;font:600 12px -apple-system,Segoe UI,Roboto,sans-serif;paint-order:stroke;stroke:#fff;stroke-width:3px}
+svg .ac{fill:#1a1d22;stroke:#000;stroke-width:.6}
+svg .tk{fill:#cfe9f3;stroke:#4a9db9;stroke-width:1.6;fill-opacity:.55}
+svg .dash{fill:none;stroke:#111;stroke-width:1.1;stroke-dasharray:5 3}
+svg .hid{fill:none;stroke:#fff;stroke-width:1;stroke-dasharray:3 2}
+svg .rt{fill:#f4f4f0;stroke:#111;stroke-width:1.2}
+svg .pp{fill:#cfd3d8;stroke:#6b7280;stroke-width:.8;stroke-dasharray:4 3}
+svg .gl{fill:#a8d8ea;stroke:#4a9db9;stroke-width:.8}
+svg .cb{fill:#6b7280;stroke:#9ca3af;stroke-width:.6}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{border-bottom:1px solid #e5e9ee;padding:7px 6px;text-align:left;vertical-align:top}
+th{color:#475569;font-size:12px;background:#f8fafb}
+td small{color:#64748b}
+.pg{display:grid;grid-template-columns:1fr;gap:8px}
+.pg label{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px}
+.inp{display:flex;align-items:center;gap:4px;flex:none}
+.inp input{width:78px;padding:7px 8px;border:1px solid #cbd5e0;border-radius:8px;font:inherit;text-align:right;background:#fff}
+.inp em{font-style:normal;color:#64748b;font-size:12px;width:20px}
+select{padding:7px 8px;border:1px solid #cbd5e0;border-radius:8px;font:inherit;background:#fff}
+button.act{background:#0f766e;color:#fff;border:0;border-radius:10px;padding:10px 14px;font:700 13.5px inherit;font-family:inherit;cursor:pointer}
+button.sec{background:#fff;color:#334155;border:1px solid #cbd5e0;border-radius:10px;padding:10px 14px;font:600 13px inherit;font-family:inherit;cursor:pointer}
+textarea{width:100%;height:220px;margin-top:8px;border:1px solid #cbd5e0;border-radius:8px;padding:8px;font:12px/1.45 ui-monospace,Menlo,monospace}
+ul.n{margin:6px 0;padding-left:18px;font-size:13.5px}
+ul.n li{margin:4px 0}
+#warn{list-style:none;padding:0;margin:8px 0 0;color:#9a3412;font-size:13px}
+.g3{display:grid;grid-template-columns:1fr;gap:10px}
+.g3 div{display:flex;flex-direction:column;gap:4px}
+.g3 img{width:100%;display:block;border-radius:10px;border:1px solid #d8dee6;background:#fff}
+.g3 span{font-size:12.5px;color:#334155;font-weight:600}
+.g3n{font-size:13px;color:#64748b}
+@media (min-width:700px){.g3{grid-template-columns:repeat(3,1fr)}}
+@media (min-width:700px){.legend{grid-template-columns:1fr 1fr}.pg{grid-template-columns:1fr 1fr;column-gap:22px}}
+/* tab halaman situs: Desain 1 · Desain 2 (tambahan, di luar desain asli) */
+.pagetabs{display:inline-flex;gap:3px;padding:3px;margin:0 0 10px;max-width:100%;overflow-x:auto;scrollbar-width:none;background:#fff;border:1px solid #d9e0e7;border-radius:11px}
+.pagetabs::-webkit-scrollbar{display:none}
+.pagetabs a{flex:none;padding:6px 12px;border-radius:8px;font-size:12.5px;font-weight:600;color:#64748b;text-decoration:none;white-space:nowrap}
+.pagetabs a:hover{color:#16202a}
+.pagetabs a[aria-current=page]{background:#0f766e;color:#fff}
+</style>
+</head>
+<body>
+<header>
+  <nav class="pagetabs" aria-label="Pilih desain">
+    <a href="./">Desain 1 · back filter</a>
+    <a href="./desain2.html" aria-current="page">Desain 2 · overflow sisir</a>
+  </nav>
+  <h1>Overflow Box Sisir (akrilik)</h1>
+  <p id="sub"></p>
+</header>
+<nav class="tabs">
+  <button class="tab on" data-tab="tab3d">Model 3D</button>
+  <button class="tab" data-tab="tabdraw">Gambar Kerja</button>
+  <button class="tab" data-tab="tabinfo">Spesifikasi</button>
+  <button class="tab" data-tab="tabcek">Cek &amp; debit</button>
+</nav>
+<main>
+<section id="tab3d">
+  <div id="viewer">
+    <canvas id="c"></canvas>
+    <div id="labels"></div>
+    <div id="nogl" hidden>Browser ini tidak mendukung WebGL. Buka tab “Gambar Kerja” untuk gambar 2D berukuran.</div>
+    <div id="vnote" class="vnote" hidden></div>
+    <div class="hint">1 jari putar · 2 jari geser/zoom</div>
+  </div>
+  <div class="row">
+    <button class="chip on" data-view="tank">Seluruh tank</button>
+    <button class="chip" data-view="tankf">Tank dari depan</button>
+    <button class="chip" data-view="persp">Perspektif box</button>
+    <button class="chip" data-view="boxin">Kotak dalam saja</button>
+    <button class="chip" data-view="boxout">Kotak luar saja</button>
+    <div class="rl">📐 Detail ukuran overflow, pilih salah satu:</div>
+    <button class="chip dt" data-view="luar">Dari luar</button>
+    <button class="chip dt" data-view="dalam">Dari dalam tank</button>
+    <button class="chip dt" data-view="atas">Atas</button>
+    <button class="chip dt" data-view="samping">Samping</button>
+  </div>
+  <div class="ctl">
+    <label class="sl">Terurai <input id="ex" type="range" min="0" max="100" value="30"> </label>
+    <div class="tg">
+      <label><input type="checkbox" id="tg-glass" checked> Kaca tank</label>
+      <label><input type="checkbox" id="tg-water" checked> Air (ilustrasi)</label>
+      <label><input type="checkbox" id="tg-bulk" checked> Bulkhead</label>
+      <label><input type="checkbox" id="tg-flow" checked> Aliran air</label>
+      <label><input type="checkbox" id="tg-box" checked> Overflow box</label>
+      <label><input type="checkbox" id="tg-ret" checked> Output return</label>
+      <label><input type="checkbox" id="tg-dim" checked> Ukuran</label>
+      <label><input type="checkbox" id="tg-det" checked> Detail ukuran</label>
     </div>
-    <noscript><p class="note" style="padding: 12px">Halaman ini membutuhkan JavaScript.</p></noscript>
-    <script type="module" src="/src/d2/main.js"></script>
-  </body>
+  </div>
+  <div class="card">
+    <h2>Keterangan</h2>
+    <div class="legend">
+      <div><span class="sw" style="background:#14161a"></span>Akrilik hitam (kotak dalam &amp; luar)</div>
+      <div><span class="sw" style="background:#9fd6e8"></span>Tank 60×40×40 (ilustrasi, bukan dibuat tukang akrilik); kaca belakang: 2 lubang + 1 celah terbuka dari tepi atas</div>
+      <div><span class="sw" style="background:#4aa8d8;opacity:.5"></span>Air (ilustrasi, permukaan pada debit ±1.000 L/jam)</div>
+      <div><span class="sw" style="background:#f1f1ee;border:1px solid #bbb"></span>Bulkhead 20 mm putih: 2 penghubung kiri-kanan (kotak dalam → kaca → kotak luar, menjepit sekaligus dilewati air) + 4 di alas kotak luar. Titik biru bergerak = aliran air. Hitam: 2 output return (bulkhead elbow ↓ ke sump + duckbill)</div>
+      <div><span class="sw" style="background:#ea580c"></span>Garis &amp; angka oranye = ukuran (cm)</div>
+    </div>
+    <p style="font-size:13px;color:#475569;margin:10px 0 0">Kotak dalam menempel di sisi dalam kaca (sisir menghadap ke dalam tank). Kotak luar menempel di sisi luar kaca; 2 lubang dan 1 celah terbuka (dari tepi atas) segaris dengan kaca. Air masuk lewat sisir, lalu lewat celah terbuka di tengah (jalur utama) dan 2 bulkhead di kiri-kanan yang juga menjepit kotak ke kaca, lalu turun ke 4 bulkhead di alas kotak luar menuju sump. Saat "Aliran air" aktif, akrilik dibuat tembus pandang supaya jalur air terlihat.</p>
+  </div>
+</section>
+
+<section id="tabdraw" hidden>
+  <figure>
+    <h3>0. Penempatan di tank (ilustrasi)</h3>
+    <div id="d0a"></div>
+    <figcaption>Tampak belakang (dari luar tank). Kotak luar (hitam) tepat di tengah panjang tank, bibir atasnya rata dengan tepi atas kaca; garis putus-putus = kotak dalam di balik kaca, lingkaran putus-putus = 2 lubang bulkhead, kotak putus-putus di tengah = celah terbuka di balik kotak luar.</figcaption>
+    <div id="d0b" style="margin-top:10px"></div>
+    <figcaption>Tampak atas. Kotak dalam di dalam tank, kotak luar di luar, kaca di antaranya. Ukuran tank hanya ilustrasi; tukang akrilik hanya membuat kedua kotak.</figcaption>
+  </figure>
+  <figure>
+    <h3>0b. Lubang di kaca belakang (untuk tukang kaca)</h3>
+    <div id="d0c"></div>
+    <figcaption>Tampak dari luar tank. 4 lubang + 1 celah terbuka: 2 lubang bulkhead penghubung di kiri-kanan tengah, celah terbuka dari tepi atas di tengah (dipotong sendiri), dan 2 lubang output return di sisi luar. Ø lubang mengikuti ulir bulkhead asli (ukur dulu).</figcaption>
+  </figure>
+  <figure>
+    <h3>0c. Output return: bulkhead elbow + duckbill (potongan samping)</h3>
+    <div id="d0d" style="max-width:460px"></div>
+    <figcaption>Warna hitam. Sisi L di luar tank menghadap ke bawah, disambung ke pipa 20 mm dari sump. Sisi lurus di dalam tank dipasangi duckbill loc-line (panjang ± 12,3 cm, ujung pipih lebar 2,8 cm, sesuai foto produk). Arah duckbill bisa ditekuk karena loc-line.</figcaption>
+  </figure>
+  <figure>
+    <h3>1. Potongan samping (lewat celah terbuka di tengah)</h3>
+    <div id="d1"></div>
+    <figcaption>Urutan dari dalam tank: kotak dalam → kaca → kotak luar. Potongan lewat tengah (celah terbuka); bulkhead penghubung digambar putus-putus karena berada di kiri-kanan bidang potong. Garis putus-putus = pusat lubang tembus. Zona abu-abu = area sisir.</figcaption>
+  </figure>
+  <div class="band" id="iband"></div>
+  <figure>
+    <h3>A. Gambaran 3D kotak dalam (setelah dirakit)</h3>
+    <div id="i3d" class="g3"></div>
+    <figcaption id="i3dc"></figcaption>
+  </figure>
+  <figure>
+    <h3>A0. Rakitan terurai &amp; nomor keping</h3>
+    <div id="ia"></div>
+    <figcaption id="iac"></figcaption>
+  </figure>
+  <figure>
+    <h3>A00. Tampak atas &amp; potongan samping (tebal akrilik terlihat)</h3>
+    <div id="ip"></div>
+    <figcaption id="ipc"></figcaption>
+    <div id="is" style="margin-top:10px"></div>
+    <figcaption id="isc"></figcaption>
+  </figure>
+  <figure>
+    <h3>A1. Keping 1: Alas</h3>
+    <div id="i1" style="max-width:420px"></div>
+    <figcaption id="i1c"></figcaption>
+  </figure>
+  <figure>
+    <h3>A2. Keping 2: Dinding belakang (menempel kaca)</h3>
+    <div id="d3"></div>
+    <figcaption id="d3c"></figcaption>
+  </figure>
+  <figure>
+    <h3>A3. Keping 3: Dinding depan bersisir</h3>
+    <div id="d2"></div>
+    <figcaption id="d2c"></figcaption>
+    <h3 style="margin-top:12px">Detail A: ujung kiri sisir (diperbesar)</h3>
+    <div id="d2b" style="max-width:420px"></div>
+  </figure>
+  <figure>
+    <h3>A4. Keping 4 dan 5: Dinding ujung (2 keping)</h3>
+    <div id="i4" style="max-width:300px"></div>
+    <figcaption id="i4c"></figcaption>
+  </figure>
+  <figure>
+    <h3>Daftar potong kotak dalam</h3>
+    <div class="sc"><table id="it"></table></div>
+    <figcaption id="itc"></figcaption>
+  </figure>
+  <div class="band" id="oband"></div>
+  <figure>
+    <h3>B. Gambaran 3D kotak luar (setelah dirakit)</h3>
+    <div id="o3d" class="g3"></div>
+    <figcaption id="o3dc"></figcaption>
+  </figure>
+  <figure>
+    <h3>B0. Rakitan terurai &amp; nomor keping</h3>
+    <div id="oa"></div>
+    <figcaption id="oac"></figcaption>
+  </figure>
+  <figure>
+    <h3>B00. Tampak atas &amp; potongan samping (tebal akrilik terlihat)</h3>
+    <div id="op"></div>
+    <figcaption id="opc"></figcaption>
+    <div id="os" style="margin-top:10px"></div>
+    <figcaption id="osc"></figcaption>
+  </figure>
+  <figure>
+    <h3>B1. Keping 1: Alas (4 lubang bulkhead)</h3>
+    <div id="d5"></div>
+    <figcaption id="d5c"></figcaption>
+  </figure>
+  <figure>
+    <h3>B2. Keping 2: Dinding sisi kaca (2 lubang + celah terbuka)</h3>
+    <div id="d4"></div>
+    <figcaption id="d4c"></figcaption>
+  </figure>
+  <figure>
+    <h3>B3. Keping 3: Dinding belakang</h3>
+    <div id="o3"></div>
+    <figcaption id="o3c"></figcaption>
+  </figure>
+  <figure>
+    <h3>B4. Keping 4 dan 5: Dinding ujung (2 keping)</h3>
+    <div id="o4" style="max-width:300px"></div>
+    <figcaption id="o4c"></figcaption>
+  </figure>
+  <figure>
+    <h3>Daftar potong kotak luar</h3>
+    <div class="sc"><table id="ot"></table></div>
+    <figcaption id="otc"></figcaption>
+  </figure>
+</section>
+
+<section id="tabinfo" hidden>
+  <div class="card">
+    <h2>Spesifikasi untuk tukang</h2>
+    <button class="act" id="copy">Salin spesifikasi (teks WhatsApp)</button>
+    <span id="copymsg" style="font-size:12.5px;color:#0f766e;margin-left:6px"></span>
+    <textarea id="spec" hidden readonly></textarea>
+  </div>
+  <div class="card">
+    <h2>Lubang kaca &amp; komponen</h2>
+    <ul class="n" id="glassholes"></ul>
+    <h3 style="margin:10px 0 4px;font-size:13px;color:#0f766e">Komponen non-akrilik (beli terpisah)</h3>
+    <ul class="n"><li>Bulkhead 20 mm × 2 penghubung (kiri-kanan celah), <b>ulir panjang ≥ 2 cm</b> (menembus akrilik + kaca + akrilik = 1,1 cm): flens di dalam kotak dalam, mur di dalam kotak luar</li><li>Bulkhead 20 mm × 4, untuk alas kotak luar (ke sump)</li><li>Bulkhead elbow 20 mm × 2 (hitam / abu tua) untuk output: sisi L di luar menghadap ke bawah, sisi lurus di dalam tank</li><li>Duckbill loc-line 20 mm × 2 (hitam), dipasang di sisi lurus di dalam tank</li></ul>
+  </div>
+  <div class="card">
+    <h2>Perkiraan tinggi air saat jalan <span style="font-weight:500;font-size:12px;color:#64748b">(untuk pemilik, bukan untuk pemotongan)</span></h2>
+    <div class="sc"><table id="lvl"></table></div>
+    <p id="lvlc" style="font-size:12.5px;color:#64748b;margin:8px 0 0"></p>
+  </div>
+  <div class="card">
+    <h2>Daftar potong (usulan)</h2>
+    <div class="sc"><table id="parts"></table></div>
+    <p style="font-size:12.5px;color:#64748b;margin:8px 0 0">Usulan: alas berada di bawah dinding. Tukang boleh memakai sambungan lain, asalkan ukuran luar kotak dan posisi lubang tetap sama.</p>
+  </div>
+  <div class="card">
+    <h2>Catatan untuk tukang</h2>
+    <ul class="n">
+      <li>Bahan akrilik hitam glossy, mengikuti foto referensi. Ukuran kotak = ukuran luar setelah dirakit.</li>
+      <li>Posisi 2 lubang dan celah terbuka di dinding belakang kotak dalam, di kaca, dan di dinding depan kotak luar harus <b>segaris presisi</b>. Ambil posisi dari kaca yang sudah dibor, atau buat templat dari kaca itu.</li>
+      <li>Lubang bulkhead (alas kotak luar) = diameter ulir luar bulkhead + sekitar 1 mm. <b>Ukur bulkhead asli dengan jangka sorong</b> sebelum memotong.</li>
+      <li>2 lubang penghubung (dinding sisi kaca kotak dalam dan luar, plus kaca) <b>dipasangi bulkhead</b> (menjepit kotak ke kaca dan ikut dilewati air), Ø lubangnya sama dengan lubang bulkhead alas: mengikuti gambar. <b>Celah terbuka</b> di tengah dipotong dari tepi atas turun; lebar dan dasar celah menentukan tinggi air di kotak dalam, jadi jangan diubah tanpa konfirmasi. Sudut bawah celah dibulatkan (R ± 0,5), tepi dihaluskan, dan keliling celah antara akrilik dan kaca <b>disegel silikon rapat</b>.</li>
+      <li>Ukuran di gambar sudah final. Jangan mengubah ukuran, posisi lubang, lebar atau dasar celah tanpa konfirmasi pemilik.</li>
+      <li>Pada kotak dalam dan kotak luar, celah terbuka berada di dinding sisi kaca saja: terbuka dari tepi atas, sudut bawah dibulatkan (R ± 0,5), sisi kiri-kanan lurus tegak. Celah di kaca dipotong sendiri oleh pemilik.</li>
+      <li>Tepi celah sisir, tepi celah terbuka, dan tepi lubang dihaluskan, tanpa serpihan tajam.</li>
+      <li>Sambungan alas-dinding dan dinding-dinding dilem rapat (tanpa celah), terutama sekeliling celah terbuka dan 4 lubang alas kotak luar.</li>
+      <li>Uji bocor (isi air ±24 jam) sebelum dipasang ke tank.</li>
+    </ul>
+  </div>
+  <div class="card" style="display:none">
+    <h2>Parameter (ukuran sudah final, jangan diubah kecuali diminta pemilik)</h2>
+    <label style="display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px;margin-bottom:6px">
+      <span>Ukuran bulkhead (mengisi Ø lubang alas kotak luar &amp; output return)</span>
+      <select id="bsel"><option value="20" selected>20 mm</option><option value="25">25 mm</option><option value="32">32 mm</option></select>
+    </label>
+    <p style="font-size:12px;color:#64748b;margin:0 0 6px">Ø lubang 20 mm = hasil ukur Anda untuk bulkhead Sanking 20 mm; 25 / 32 mm hanya perkiraan. Ganti dengan hasil ukur ulir bulkhead asli.</p>
+    <div id="params"></div>
+    <ul id="warn"></ul>
+    <div style="margin-top:14px"><button class="sec" id="reset">Kembalikan ke awal</button></div>
+  </div>
+</section>
+
+<section id="tabcek" hidden></section>
+</main>
+<!-- desain asli pemilik, tanpa perubahan (dipisah dari HTML karena CSP situs melarang skrip inline) -->
+<script src="./d2/overflow-sisir.js"></script>
+<script type="module" src="/src/d2/cek.js"></script>
+</body>
 </html>

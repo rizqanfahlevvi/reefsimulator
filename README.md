@@ -4,8 +4,8 @@ Simulator interaktif untuk tank 50×25×30 cm dengan back filter 50×11×30 cm:
 siphon U-pipe (intake bawah + surface skimmer), pompa return dan duckbill, weir antar-chamber,
 ATO, saklar pelampung, uji padam listrik, arus CFD di tank dan filter, serta estimasi biaya listrik.
 
-Halaman kedua, **Desain 2** (`desain2.html`, tab di header): tank 60×40×40 cm dengan overflow bersisir eksternal
-(lubang bor, saluran Bean Animal) — model 3D + kalkulator. Sump menyusul.
+Halaman kedua, **Desain 2** (`desain2.html`, tab di header): overflow box sisir akrilik untuk tank 60×40×40 cm,
+persis desain pemilik (model 3D, gambar kerja, spesifikasi tukang) + tab **Cek & debit**. Sump menyusul.
 
 ## Menjalankan (lewat VS Code, tanpa banyak terminal)
 
@@ -44,9 +44,10 @@ Workflow `.github/workflows/ci.yml` menjalankan uji + build di GitHub Actions un
 
 ```
 index.html              kerangka halaman Desain 1 (simulasi back filter)
-desain2.html            kerangka halaman Desain 2 (overflow sisir + Bean Animal)
+desain2.html            Desain 2: markup & gaya desain asli pemilik + tab halaman + tab "Cek & debit"
+public/d2/overflow-sisir.js  skrip desain asli pemilik, TANPA perubahan (dipisah karena CSP melarang skrip inline)
 src/
-  d2/                   Desain 2: model.js (kalkulator murni), scene.js (3D), diagram.js (SVG potongan), panel.js, main.js
+  d2/                   Desain 2: model.js (replika rumus tinggi air asli + peringatan), cek.js/cek.css (tab Cek & debit)
   main.js               titik masuk: loop utama, perakitan modul
   state.js              state aplikasi bersama + event bus kecil
   sim.js                integrator langkah tetap (0,02 dtk) + riwayat grafik
@@ -171,27 +172,20 @@ Simulasi arus dijeda dan panel berganti menjadi katalog.
   dan dipulihkan saat halaman dibuka; tanpa desain, model bawaan v1 tetap bit-identik (diuji). Ringkasan hidrolik ikut
   laporan Claude (bagian 13) dan kartu pompa.
 
-## Desain 2: overflow sisir + Bean Animal (`desain2.html`, `src/d2/`)
+## Desain 2: overflow box sisir (`desain2.html`)
 
-Tank 60×40×40. Kotak sisir (20×6×12,2, 30 celah 0,3×4,5) di dalam tank menempel kaca belakang; kotak luar (20×10×18)
-di balik kaca. Keduanya disambung **lewat lubang bor berbulkhead** (tanpa celah dipotong di kaca). Alas kotak luar:
-**Bean Animal** — siphon penuh + gate valve, jalur terbuka, jalur darurat kering. Return lewat bulkhead + nozzle dengan
-**lubang pemutus siphon** Ø 4 mm ±1 cm di bawah muka air.
+Halaman ini **persis desain asli pemilik** (tank 60×40×40, kotak dalam 20×6×12,2 bersisir 30 celah, kotak luar
+20×10×18, 2 bulkhead penghubung + celah terbuka 8 cm di kaca belakang, 4 bulkhead 20 mm di alas, 2 output return
+bulkhead elbow + duckbill, kaca 5 mm, akrilik 3 mm). Tab Model 3D, Gambar Kerja, dan Spesifikasi berasal dari skrip
+asli `public/d2/overflow-sisir.js` yang tidak diubah. Ukuran **final**: kartu parameter ukuran disembunyikan.
 
-- **Kalkulator** (`model.js`, murni & teruji): keadaan tunak per debit (bisa diubah). Sisir = weir celah persegi
-  (Cd 0,6) + koreksi tenggelam Villemonte; lubang penghubung = lubang (Cd 0,7); siphon = aliran penuh
-  (masuk 0,5 + 2 siku 0,9 + gate valve + keluar 1 + gesek); jalur terbuka/darurat = weir keliling bibir pipa dibatasi lubang.
-  Gate valve otomatis: air kotak luar ±0,5 cm di atas bibir jalur terbuka. Hasil: muka air tank/kotak dalam/kotak luar,
-  pembagian aliran S/T/D, peringatan (sisir tenggelam, darurat mengalir, mulut siphon kurang terendam, meluap).
-- **Batas kapasitas**: debit saat sisir mulai tenggelam, darurat mulai mengalir, debit desain (gate terbuka penuh),
-  kapasitas cadangan bila siphon tersumbat, dan debit tank meluap.
-- **Saat padam**: volume yang turun ke sump (tank di atas dasar celah, kotak dalam, kotak luar, isi pipa, sedot balik return).
-- **Cek kaca & lubang**: SF = σt²/(βγH³) (σ 19,2 MPa, air laut, anjuran ≥ 3,8); jarak tepi lubang ≥ max(2t, Ø);
-  flens/mur bulkhead tidak menabrak alas/dinding.
-- **Gambar kerja**: daftar potong akrilik & bor kaca (bisa disalin untuk tukang). Ukuran bulkhead 20 mm hasil ukur;
-  25/32 mm perkiraan.
-- **3D**: render sesuai kebutuhan, tampilan Miring/Depan/Overflow/Potongan/Atas, potongan melalui bulkhead penghubung.
-  Pengaturan tersimpan di localStorage `reefsim:desain2`.
+Tambahan situs ini hanya:
+- tab halaman **Desain 1 · Desain 2** di header;
+- tab **Cek & debit** (`src/d2/`): slider debit (yang bisa diubah hanya debit), muka air tank / kotak dalam / kotak luar
+  memakai **rumus yang sama** dengan tabel "Perkiraan tinggi air saat jalan" (diuji sama dengan tabel asli), tabel per
+  debit, dan **peringatan**: tebal kaca (SF = σt²/(βγH³), σ 19,2 MPa, anjuran ≥ 3,8), celah terbuka di tepi atas kaca,
+  jarak lubang ke celah (≥ max(2t, Ø)), saluran alas tanpa pipa tegak, return tanpa lubang pemutus siphon, ruang
+  kosong sump saat padam. Debit tersimpan di localStorage `reefsim:desain2`; alamat `#m-cek` membuka tab ini.
 
 ## Analisis & laporan untuk Claude
 
