@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 /** Versi untuk laporan diagnostik: commit dari Vercel/CI, atau git lokal. */
 function commit() {
@@ -21,6 +22,13 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
+    // dua halaman: Desain 1 (simulasi back filter) & Desain 2 (overflow sisir + Bean Animal)
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        desain2: fileURLToPath(new URL('./desain2.html', import.meta.url)),
+      },
+    },
     sourcemap: true,
     chunkSizeWarningLimit: 900,
   },

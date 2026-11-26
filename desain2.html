@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description" content="Desain 2: tank 60×40×40 dengan overflow bersisir eksternal (lubang bor, Bean Animal) — model 3D dan kalkulator muka air." />
+    <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#151514" media="(prefers-color-scheme: dark)" />
+    <title>Desain 2 · Overflow sisir + Bean Animal</title>
+  </head>
+  <body class="d2">
+    <header>
+      <nav class="pagetabs" aria-label="Pilih desain">
+        <a href="./">Desain 1 · back filter</a>
+        <a href="./desain2.html" aria-current="page">Desain 2 · overflow sisir</a>
+      </nav>
+      <h1>Desain 2: overflow sisir + Bean Animal</h1>
+      <p>Tank 60×40×40 cm. Kotak sisir di dalam tank, kotak luar di balik kaca belakang, disambung lewat lubang bor. Sump menyusul.</p>
+    </header>
+    <div id="app">
+      <div id="viewWrap">
+        <div id="view">
+          <div id="hud">
+            <div id="status" role="status" aria-live="polite">Menghitung…</div>
+          </div>
+          <div id="vbtn">
+            <button data-v="iso" type="button">Miring</button>
+            <button data-v="front" type="button">Depan</button>
+            <button data-v="back" type="button">Overflow</button>
+            <button data-v="side" type="button">Potongan</button>
+            <button data-v="top" type="button">Atas</button>
+            <button id="bCut" type="button" title="Potong model melalui lubang penghubung">Potong</button>
+            <button id="bLbl" type="button" title="Tampilkan/sembunyikan label">Label</button>
+          </div>
+          <div id="hint">Seret: putar · cubit/scroll: zoom</div>
+          <div id="glError" hidden>
+            <b>3D tidak bisa ditampilkan.</b>
+            <span>Browser atau perangkat ini tidak mendukung WebGL 2. Kalkulator tetap berjalan.</span>
+          </div>
+        </div>
+      </div>
+      <div id="panel"></div>
+      <div id="charts">
+        <div class="card">
+          <p class="note">
+            <b>Model:</b> keadaan tunak per debit. Celah sisir dihitung sebagai weir celah persegi (Cd 0,6) dengan koreksi tenggelam
+            Villemonte; lubang penghubung sebagai lubang/bulkhead (Cd 0,7); siphon utama sebagai aliran penuh (rugi masuk, dua siku,
+            gate valve, keluar, dan gesek); jalur terbuka & darurat sebagai weir keliling bibir pipa yang dibatasi lubang. Gate valve
+            otomatis disetel supaya air kotak luar ±0,5 cm di atas bibir jalur terbuka. Tebal kaca dari teori pelat tiga sisi dijepit
+            (σ 19,2 MPa, air laut). Tinggi sump di bawah kotak luar dan panjang pipa masih perkiraan sampai sump didesain. Angka adalah
+            acuan untuk dikalibrasi saat uji air tawar.
+          </p>
+        </div>
+      </div>
+    </div>
+    <noscript><p class="note" style="padding: 12px">Halaman ini membutuhkan JavaScript.</p></noscript>
+    <script type="module" src="/src/d2/main.js"></script>
+  </body>
+</html>
